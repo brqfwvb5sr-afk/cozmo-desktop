@@ -77,7 +77,8 @@ async def until(predicate):
 
 
 async def test_spawn_connect_drive_expiry_and_reconnect(backend):
-    await backend.connect()
+    # Connect and Home/Wake can be clicked close together; share one session.
+    await asyncio.gather(backend.connect(), backend.connect())
     assert backend.state.connected and not backend.state.motors_enabled
     assert backend.state.battery is None
     await backend.arm_motors()

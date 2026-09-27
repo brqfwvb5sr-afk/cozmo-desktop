@@ -83,6 +83,7 @@ class DirectBackend(RobotBackend):
         self._closing = False
         self._failed = False
         self._state_received = asyncio.Event()
+        self._connect_lock = asyncio.Lock()
 
     @property
     def state(self) -> RobotState:
@@ -98,6 +99,10 @@ class DirectBackend(RobotBackend):
         )
 
     async def connect(self) -> None:
+        async with self._connect_lock:
+            await self._connect()
+
+    async def _connect(self) -> None:
         if self._state.connected:
             return
         if importlib.util.find_spec("pycozmo") is None:
