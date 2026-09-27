@@ -68,5 +68,7 @@ async def apply_expression(controller: RobotController, expression: Expression) 
         return
     frame = render_face(expression.name)
     await controller.backend.display_face(frame, expression.name)
+    if not controller.backend.state.motors_enabled:
+        return  # Facial expressions are usable before physical motor opt-in.
     await controller.backend.set_head_angle(expression.head_angle)
     await controller.backend.set_lift_height(expression.lift)

@@ -13,9 +13,9 @@ logger = logging.getLogger(__name__)
 class RobotController:
     def __init__(self, backend: RobotBackend, speed_limit: float = 40) -> None:
         self.backend = backend
-        self.speed_limit = bounded(speed_limit, 10, MAX_SPEED)
+        self.speed_limit = bounded(speed_limit, 10, min(MAX_SPEED, backend.speed_cap))
         self.latched = False
-        self.message = "Connect to meet your simulated Cozmo."
+        self.message = "Choose a connection mode, then connect to Cozmo."
         self._tasks: dict[str, asyncio.Task[None]] = {}
         self._stop_task: asyncio.Task[None] | None = None
         self.closing = False
@@ -115,6 +115,24 @@ class RobotController:
         self._cancel_commands()
         await self.backend.disconnect()
         self.message = "Disconnected. No movement is active."
+
+    async def change_backend(self, backend: RobotBackend) -> None:
+        """Stop and retire the old backend before exposing a new one to widgets."""
+        self._stop_epoch += 1
+        epoch = self._stop_epoch
+        self.latched = True
+        self._cancel_commands()
+        await asyncio.gather(*tuple(self._tasks.values()), return_exceptions=True)
+        if self._stop_task is not None:
+            await self._stop_task
+        await self.backend.disconnect()
+        self.backend = backend
+        self.speed_limit = min(
+            self.speed_limit, backend.speed_cap, 20 if not backend.is_simulation else 40
+        )
+        if epoch == self._stop_epoch and not self.closing:
+            self.latched = False
+        self.message = "Mode changed. Connect when ready; physical motors start locked."
 
     async def shutdown(self) -> None:
         self._stop_epoch += 1

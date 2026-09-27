@@ -1,3 +1,1 @@
-"""Reserved for a hardware-validated direct adapter. No protocol implementation yet."""
-
-AVAILABLE = False
+"""Experimental physical transport; validation with a robot is still required."""

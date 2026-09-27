@@ -195,7 +195,7 @@ class SimulatorBackend(RobotBackend):
             x=state.x + speed * math.cos(heading) * dt,
             y=state.y + speed * math.sin(heading) * dt,
             heading=heading,
-            battery=max(0.0, state.battery - dt * 0.003),
+            battery=max(0.0, (state.battery or 0) - dt * 0.003),
             face_detected=face,
             cubes=cubes,
             expression=("Curious" if face else "Sleepy") if state.freeplay else state.expression,

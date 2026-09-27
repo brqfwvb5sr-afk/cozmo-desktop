@@ -1,3 +1,3 @@
 """Unofficial Cozmo desktop companion. GPL-3.0-or-later."""
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"

@@ -12,7 +12,7 @@ class RobotError(Exception):
 
 class NotConnectedError(RobotError):
     def __init__(self) -> None:
-        super().__init__("Connect to the simulator first.")
+        super().__init__("Connect to Cozmo first.")
 
 
 @dataclass(frozen=True)
@@ -21,13 +21,17 @@ class CubeState:
     connected: bool = False
     tapped: bool = False
     moved: bool = False
-    orientation: str = "upright"
+    orientation: str = "unknown"
 
 
 @dataclass(frozen=True)
 class RobotState:
     connected: bool = False
-    battery: float = 87.0
+    battery: float | None = 87.0
+    battery_voltage: float | None = None
+    backend_name: str = "simulator"
+    motors_enabled: bool = True
+    safety_status: str = ""
     charging: bool = False
     head_angle: float = 0.0
     lift_height: float = 0.0
@@ -61,6 +65,16 @@ class RobotBackend(ABC):
     refresh, stop on disconnect, and keep stop idempotent even when disconnected.
     Async methods must not block. Long actions must respect task cancellation.
     """
+
+    is_simulation = True
+    speed_cap = 80
+
+    async def arm_motors(self) -> None:
+        """Explicit opt-in for physical motor commands; simulator needs no arming."""
+        return None
+
+    async def cube_lights(self, number: int) -> None:
+        raise RobotError("Cube light control is unavailable in this backend.")
 
     @property
     @abstractmethod

@@ -4,16 +4,17 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cozmo-desktop"
-version = "0.1.0"
+version = "0.2.0"
 description = "An unofficial, simulator-first desktop companion for Cozmo"
 readme = "README.md"
 requires-python = ">=3.11,<3.14"
 license = "GPL-3.0-or-later"
-license-files = ["LICENSE"]
+license-files = ["LICENSE", "docs/licenses/*.txt"]
 authors = [{name = "Cozmo Desktop contributors"}]
 dependencies = ["PySide6>=6.8,<6.9", "qasync>=0.27,<0.29", "Pillow>=10.4,<13"]
 
 [project.optional-dependencies]
+direct = ["pycozmo==0.8.0", "numpy>=1.26,<2; python_version<'3.13'", "numpy>=2.1,<3; python_version>='3.13'", "flatbuffers>=24,<26", "dpkt==1.9.8"]
 dev = ["pytest>=8,<10", "pytest-asyncio>=0.24,<2", "pytest-qt>=4.4,<5", "ruff>=0.9,<1", "mypy>=1.14,<2", "build>=1.2,<2"]
 
 [project.gui-scripts]
@@ -41,5 +42,5 @@ disallow_untyped_defs = true
 warn_unused_ignores = true
 
 [[tool.mypy.overrides]]
-module = ["qasync"]
+module = ["qasync", "pycozmo", "pycozmo.*"]
 ignore_missing_imports = true
