@@ -119,6 +119,9 @@ def test_real_sdk_encodes_drive_pose_face_audio_and_stop(transport):
         stream.setparams((1, 2, 22050, 0, "NONE", "not compressed"))
         stream.writeframes(b"\0\0" * 1500)
     transport.audio(data.getvalue())
+    volume = transport.client.conn.send.call_args.args[0]
+    assert type(volume).__name__ == "SetRobotVolume" and volume.level == 30000
+    assert volume.to_bytes()
     audio, _, _ = transport.client.anim_controller.queue.get()
     assert len(audio.samples) == 744 and audio.to_bytes()
     transport.started = True

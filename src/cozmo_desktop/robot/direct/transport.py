@@ -151,6 +151,7 @@ class PyCozmoTransport:
                 packets.append(self.api.protocol_encoder.OutputAudio(samples=samples))
                 if len(packets) > 900:
                     raise RobotError("Speech is limited to 30 seconds.")
+        self.client.set_volume(30000)  # Explicit moderate volume; do not inherit a muted session.
         self.client.anim_controller.play_audio(packets)
 
     def cube_lights(self, number: int) -> None:

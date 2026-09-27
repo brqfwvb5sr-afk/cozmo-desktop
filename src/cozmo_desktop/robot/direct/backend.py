@@ -158,6 +158,8 @@ class DirectBackend(RobotBackend):
             self._pending.pop(request, None)
             if not future.done():
                 future.cancel()
+            elif not future.cancelled():
+                future.exception()  # Retrieve failure even if pipe.write timed out before awaiting.
 
     def _read(self) -> dict[str, Any] | None:
         pipe = self._pipe
