@@ -1,0 +1,71 @@
+name: Test and package
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            python: '3.11'
+          - os: ubuntu-24.04
+            python: '3.12'
+    runs-on: ${{ matrix.os }}
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+      - name: Install Qt system libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libopengl0 libxkbcommon-x11-0 libxcb-cursor0 fonts-dejavu-core
+      - name: Install application and test tools
+        run: python -m pip install -e '.[dev]'
+      - name: Lint
+        run: |
+          ruff check .
+          ruff format --check .
+          mypy src
+      - name: Test without hardware
+        run: pytest -q
+      - name: Run actual Qt application
+        run: python -m cozmo_desktop --config-dir /tmp/cozmo-smoke --smoke-test build/screenshots
+      - name: Build wheel and source archive
+        run: python -m build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: python-${{ matrix.python }}-${{ matrix.os }}
+          path: |
+            dist/*
+            build/screenshots/*
+  ubuntu-package:
+    runs-on: ubuntu-24.04
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install packaging prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-venv python3-pip python3-build fonts-dejavu-core
+      - name: Build Ubuntu 24.04 package
+        run: bash scripts/build-deb.sh
+      - name: Install and launch the package
+        run: |
+          sudo apt-get install -y ./dist/cozmo-desktop_0.1.0_amd64.deb
+          cozmo-desktop --config-dir /tmp/cozmo-package --smoke-test build/package-screenshots
+          dpkg-query -W cozmo-desktop
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ubuntu-24.04-amd64-deb
+          path: |
+            dist/*
+            build/package-screenshots/*

@@ -1,0 +1,4 @@
+include LICENSE AGENTS.md CHANGELOG.md CONTRIBUTING.md
+recursive-include docs *.md *.png
+recursive-include scripts *.sh *.desktop *.svg
+recursive-include tests *.py

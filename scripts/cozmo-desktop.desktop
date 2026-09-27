@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Cozmo Desktop
+Comment=Unofficial Cozmo companion — simulation mode
+Exec=cozmo-desktop
+Icon=cozmo-desktop
+Terminal=false
+Categories=Education;Science;
+StartupNotify=true
