@@ -24,6 +24,7 @@ QPushButton:pressed { background: #407568; }
 QPushButton:disabled { color: #687d86; background: #1c2931; border-color: #293a44; }
 QPushButton#primary { color: #0d2620; background: #72e1bd; border: 1px solid #72e1bd; }
 QPushButton#primary:hover { background: #96f4d4; }
+QPushButton#primary:disabled { color: #687d86; background: #1c2931; border-color: #293a44; }
 QPushButton#stop { background: #592b35; color: #ffb7bf; border: 1px solid #97505a; }
 QPushButton#drive { min-width: 80px; min-height: 58px; font-size: 20px; }
 QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox { background: #101c23; border: 1px solid #3b515b;

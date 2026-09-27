@@ -3,6 +3,20 @@
 Inspected 2026-09-27, before implementation. **No physical robot or mobile device was
 available.** Verified below means documentation/source verified, not hardware tested.
 
+## Version 0.2.0 implementation update
+
+The initial decisions below describe the simulator milestone. At the owner's
+request, 0.2.0 adds an explicit experimental PyCozmo 0.8.0 adapter. No mobile assets
+are used. Current behavior, limits and pending physical checks are documented in
+[DIRECT_CONNECTION.md](DIRECT_CONNECTION.md). Fake transport tests are not evidence
+of successful physical connection or firmware stopping behavior.
+
+Additional source inspection: `client.py`, `anim_controller.py`, `audio.py`,
+`robot.py`, `examples/cube_lights.py` at the PyCozmo revision above. `drive_wheels`
+with `duration` sleeps on the host; it does not implement a firmware command lease.
+Our worker therefore owns independent expiry and attempts STOP, with no delivery
+guarantee on a broken link. `Enable` may trigger firmware motor calibration.
+
 ## Primary sources inspected
 
 | Project | Immutable revision | Files examined |

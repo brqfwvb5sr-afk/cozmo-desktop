@@ -26,16 +26,22 @@ jobs:
       - name: Install Qt system libraries
         run: |
           sudo apt-get update
-          sudo apt-get install -y libegl1 libopengl0 libxkbcommon-x11-0 libxcb-cursor0 fonts-dejavu-core
+          sudo apt-get install -y libegl1 libopengl0 libxkbcommon-x11-0 libxcb-cursor0 fonts-dejavu-core espeak-ng
       - name: Install application and test tools
-        run: python -m pip install -e '.[dev]'
+        run: python -m pip install -e '.[dev,direct]'
       - name: Lint
         run: |
           ruff check .
           ruff format --check .
           mypy src
+          bash -n scripts/setup-ubuntu.sh scripts/start-ubuntu.sh scripts/build-deb.sh
       - name: Test without hardware
         run: pytest -q
+      - name: Check Ubuntu source setup script
+        if: matrix.os == 'ubuntu-24.04'
+        run: |
+          bash scripts/setup-ubuntu.sh
+          .venv312/bin/python -c 'import pycozmo; import cozmo_desktop; print(cozmo_desktop.__version__)'
       - name: Run actual Qt application
         run: python -m cozmo_desktop --config-dir /tmp/cozmo-smoke --smoke-test build/screenshots
       - name: Build wheel and source archive
@@ -60,7 +66,7 @@ jobs:
         run: bash scripts/build-deb.sh
       - name: Install and launch the package
         run: |
-          sudo apt-get install -y ./dist/cozmo-desktop_0.1.0_amd64.deb
+          sudo apt-get install -y ./dist/cozmo-desktop_0.2.0_amd64.deb
           cozmo-desktop --config-dir /tmp/cozmo-package --smoke-test build/package-screenshots
           xvfb-run -a env QT_QPA_PLATFORM=xcb cozmo-desktop --config-dir /tmp/cozmo-x11 --smoke-test build/x11-screenshots
           dpkg-query -W cozmo-desktop

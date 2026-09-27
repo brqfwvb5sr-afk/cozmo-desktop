@@ -1,4 +1,6 @@
 import asyncio
+from dataclasses import replace
+from unittest.mock import AsyncMock
 
 import pytest
 from PySide6.QtCore import QEvent, Qt
@@ -6,6 +8,7 @@ from PySide6.QtGui import QKeyEvent
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
+from cozmo_desktop.robot.base import RobotError
 from cozmo_desktop.robot.simulator import SimulatorBackend
 from cozmo_desktop.services.controller import RobotController
 from cozmo_desktop.storage.settings import Settings
@@ -151,3 +154,61 @@ async def test_expression_animation_camera_snapshot_and_settings(window):
     assert len(snapshots) == 1
     window.save_settings()
     assert Settings.load(window.directory / "settings.json").speed_limit == 40
+
+
+async def test_switch_to_direct_shows_real_mode_and_locks_motor_controls(window):
+    await connect_control(window)
+    old = window.controller.backend
+    window.backend_choice.setCurrentIndex(1)
+    await window._mode_task
+    window.refresh()
+    assert not old.state.connected
+    assert not window.controller.backend.is_simulation
+    assert "REAL COZMO" in window.banner.text()
+    assert window.battery.text() == "Unknown"
+    assert window.controller.speed_limit == 20
+    assert window.control.limit.maximum() == 40
+    assert not window.control.head.isEnabled()
+    backend = window.controller.backend
+    backend._state = replace(backend.state, connected=True, battery_voltage=3.92)
+    window.refresh()
+    assert window.battery.text() == "3.92 V"
+    assert window.control.speak.isEnabled() and not window.control.head.isEnabled()
+    assert window.arm_button.isEnabled()
+    QTest.keyPress(window.control, Qt.Key.Key_W)
+    assert not window.keys
+
+
+async def test_unavailable_physical_camera_does_not_latch_or_save_stale_snapshot(window):
+    window.backend_choice.setCurrentIndex(1)
+    await window._mode_task
+    backend = window.controller.backend
+    backend._state = replace(backend.state, connected=True)
+    backend.get_camera_frame = AsyncMock(side_effect=RobotError("Waiting for Cozmo camera frames."))
+    await window.update_camera()
+    assert not window.controller.latched
+    assert "Waiting" in window.camera.text()
+    window.refresh()
+    assert window._last_frame is None
+
+
+async def test_reconnect_button_recovers_after_failed_physical_connection(window):
+    window.backend_choice.setCurrentIndex(1)
+    await window._mode_task
+    window.refresh()
+    backend = window.controller.backend
+    backend.connect = AsyncMock(side_effect=RobotError("No Cozmo Wi-Fi"))
+    window.connect_button.click()
+    await window._connection_task
+    await asyncio.sleep(0)
+    window.refresh()
+    assert window.controller.latched and window.connect_button.isEnabled()
+
+    async def connect():
+        backend._state = replace(backend.state, connected=True)
+
+    backend.connect = connect
+    window.connect_button.click()
+    await window._connection_task
+    assert backend.state.connected and not window.controller.latched
+    assert not backend.state.motors_enabled

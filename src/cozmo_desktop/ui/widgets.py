@@ -3,7 +3,7 @@ from PySide6.QtCore import QRectF, Qt
 from PySide6.QtGui import QColor, QImage, QPainter, QPaintEvent, QPen, QPixmap
 from PySide6.QtWidgets import QFrame, QLabel, QVBoxLayout, QWidget
 
-from cozmo_desktop.face.expressions import render_face
+from cozmo_desktop.face.expressions import NAMES, render_face
 from cozmo_desktop.robot.base import RobotState
 
 
@@ -67,7 +67,8 @@ class RobotPreview(QWidget):
         painter.drawRoundedRect(QRectF(117, head_y, 225, 139), 32, 32)
         painter.setBrush(QColor("#10252d"))
         painter.drawRoundedRect(QRectF(132, head_y + 16, 195, 99), 23, 23)
-        face = pixmap(render_face(self.state.expression))
+        name = self.state.expression if self.state.expression in NAMES else "Neutral"
+        face = pixmap(render_face(name))
         painter.drawPixmap(140, int(head_y + 20), 180, 90, face)
         painter.setBrush(QColor("#72e1bd" if self.state.connected else "#61747b"))
         painter.drawRoundedRect(QRectF(206, 222, 47, 7), 3, 3)

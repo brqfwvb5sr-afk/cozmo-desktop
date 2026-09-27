@@ -93,13 +93,8 @@ class ControlPage(QWidget):
         columns.addWidget(posture, 2)
         root.addLayout(columns)
         root.addWidget(label("Something to say", "title"))
-        root.addWidget(
-            label(
-                "Simulated speech appears here as text; no speaker or microphone is used.",
-                "muted",
-                True,
-            )
-        )
+        self.speech_description = label("Simulated speech appears as text.", "muted", True)
+        root.addWidget(self.speech_description)
         speech_row = QHBoxLayout()
         self.speech = QLineEdit()
         self.speech.setPlaceholderText("Hello! Ready for a little adventure?")
@@ -140,5 +135,8 @@ class ControlPage(QWidget):
                 slider.blockSignals(True)
                 slider.setValue(value)
                 slider.blockSignals(False)
-        for widget in (*self.direction_buttons.values(), self.head, self.lift, self.speak):
-            widget.setEnabled(state.connected and not self.controller.latched)
+        for widget in (*self.direction_buttons.values(), self.head, self.lift):
+            widget.setEnabled(
+                state.connected and state.motors_enabled and not self.controller.latched
+            )
+        self.speak.setEnabled(state.connected and not self.controller.latched)

@@ -1,12 +1,16 @@
 import argparse
 import asyncio
+import importlib.util
 import logging
+import shutil
 import sys
 from pathlib import Path
 
 from PySide6.QtWidgets import QApplication
 from qasync import QEventLoop
 
+from cozmo_desktop.robot.base import RobotError
+from cozmo_desktop.robot.direct.backend import DirectBackend, check_route
 from cozmo_desktop.robot.simulator import SimulatorBackend
 from cozmo_desktop.services.controller import RobotController
 from cozmo_desktop.services.diagnostics import configure_logging
@@ -16,6 +20,8 @@ from cozmo_desktop.ui.window import MainWindow
 
 async def smoke_test(window: MainWindow, destination: Path) -> None:
     """Exercise the real Qt/asyncio application lifecycle and capture original UI."""
+    if not window.controller.backend.is_simulation:
+        raise RuntimeError("Automated motion smoke tests are simulator-only.")
     try:
         await window.wake()
         await window.controller.drive(40, 40)
@@ -55,7 +61,28 @@ def main() -> int:
     parser.add_argument(
         "--smoke-test", type=Path, metavar="SCREENSHOT_DIR", help="Run UI smoke test and exit"
     )
+    parser.add_argument("--backend", choices=("simulator", "direct"), default="simulator")
+    parser.add_argument(
+        "--check-direct", action="store_true", help="Check dependencies and Wi-Fi route; no motion"
+    )
     args = parser.parse_args()
+    if args.smoke_test and args.backend == "direct":
+        parser.error("--smoke-test is simulator-only; it must never drive a physical robot")
+    if args.check_direct:
+        if importlib.util.find_spec("pycozmo") is None:
+            print("Missing PyCozmo. Install this project with the [direct] extra.")
+            return 1
+        print(
+            "PyCozmo installed; eSpeak NG: "
+            + ("available" if shutil.which("espeak-ng") else "missing")
+        )
+        try:
+            print(f"Cozmo route source: {check_route()}")
+        except (RobotError, OSError) as exc:
+            print(str(exc))
+            return 1
+        print("Route check passed. Robot availability still requires Connect in the GUI.")
+        return 0
     directory = args.config_dir or config_directory()
     startup_warning = ""
     try:
@@ -74,7 +101,10 @@ def main() -> int:
     app.setOrganizationName("Cozmo Desktop Community")
     loop = QEventLoop(app)
     asyncio.set_event_loop(loop)
-    controller = RobotController(SimulatorBackend(), settings.speed_limit)
+    controller = RobotController(
+        DirectBackend() if args.backend == "direct" else SimulatorBackend(),
+        min(settings.speed_limit, 20) if args.backend == "direct" else settings.speed_limit,
+    )
     if startup_warning:
         controller.message = startup_warning
     window = MainWindow(controller, settings, directory)

@@ -3,14 +3,16 @@
 Source install targets Ubuntu 22.04 with Python 3.11 and Ubuntu 24.04 with Python
 3.12. The initial `.deb` recipe targets **Ubuntu 24.04 amd64 only**, using its system
 Python 3.12 and a private virtual environment. Ubuntu 26.04, ARM and AppImage are
-not validated targets yet. No mobile app or robot package is bundled.
+not validated targets yet. PyCozmo and its Python dependencies are bundled; no mobile app assets are included.
+The separate Ubuntu source setup script installs Python 3.12 with uv, allowing
+installation on hosts with newer system Python without replacing it.
 
 Build on Ubuntu 24.04:
 
 ```bash
 sudo apt install python3-venv python3-pip python3-build
 bash scripts/build-deb.sh
-sudo apt install ./dist/cozmo-desktop_0.1.0_amd64.deb
+sudo apt install ./dist/cozmo-desktop_0.2.0_amd64.deb
 cozmo-desktop
 ```
 

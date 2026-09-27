@@ -1,22 +1,102 @@
-# Direct connection: disabled
+# Echter Cozmo unter Ubuntu / experimental direct Wi-Fi
 
-Version 0.1.0 does not send robot packets or join Wi-Fi networks. It has no pairing
-wizard, firmware updater, raw sockets or secret network configuration changes.
+Version 0.2.0 implements a physical adapter using PyCozmo 0.8.0. It sends real robot
+commands. Transport codecs, the worker watchdog and Qt integration have automated
+hardware-free tests. **Physical hardware validation is still pending.** No phone
+bridge, firmware updater or original mobile-app behavior engine is included.
 
-PyCozmo is a credible starting point for phone-free control; see the pinned source
-inspection in CONNECTION_RESEARCH.md. Its existence is not a guarantee of parity
-with the original app. Perception, recognition, behaviors and games require an engine.
+## Installation / Update (Internet noch verbunden lassen)
 
-Before enabling an adapter:
+```bash
+cd ~/cozmo-desktop
+git pull --ff-only
+sudo apt update
+sudo apt install python3-venv espeak-ng libegl1 libopengl0 libxkbcommon-x11-0 \
+  libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
+  libxcb-render-util0 libxcb-xinerama0 fonts-dejavu-core
+bash scripts/setup-ubuntu.sh
+```
 
-1. Select and pin a compatible implementation; audit its resource/license boundary.
-2. Use a supervised robot on the floor, record firmware and OS, verify Wi-Fi association.
-3. Establish/close a session; read state without actuating motors.
-4. Check OLED and camera using original/generated assets only.
-5. Verify bounded low-speed commands, explicit stop, lease expiry, process crash,
-   dropped packets, network disconnect, cliff and pickup responses.
-6. Test cube connection/tap/light capabilities individually; report unknowns as unknown.
-7. Keep the adapter experimental until a reproducible hardware test matrix passes.
+Das Skript erstellt eine eigene Python-3.12-Umgebung `.venv312`, auch bei System-
+Python 3.14. System-Python bleibt unverändert. Vorhandenes `.venv/bin/uv` wird
+wiederverwendet; sonst installiert es uv in `.venv-tools`. Python und Pakete werden
+heruntergeladen. Ubuntu 22.04/24.04 werden in CI geprüft; Ubuntu 26.04 ist noch kein
+geprüftes Target. Die alte .venv wird nicht gelöscht.
 
-Do not download animation OBB archives as part of install or CI. Never port firmware
-update tools into the desktop UI without a separate reviewed requirement.
+## VMware und USB-WLAN-Adapter
+
+1. In VMware den USB-WLAN-Adapter an Ubuntu übergeben: **VM → Removable Devices →
+   dein WLAN-Adapter → Connect (Disconnect from host)**. Menünamen können variieren.
+2. In Ubuntu `lsusb` und `nmcli device status` prüfen. Ein `wifi`-Gerät (`wlx…` oder
+   `wlan0`) muss erscheinen. Nur `ens33`/Ethernet reicht nicht: VMware-NAT ersetzt
+   keinen WLAN-Adapter, mit dem Ubuntu Cozmos Netzwerk auswählen kann.
+3. Cozmo auf die versorgte Ladestation stellen. Lift heben/senken, bis WLAN-Name
+   und Passwort erscheinen. Die mobile Cozmo-App schließen.
+4. In **Ubuntus** WLAN-Einstellungen `Cozmo_…` auswählen und das angezeigte Passwort
+   eingeben. „Kein Internet“ auf diesem WLAN ist normal.
+5. `ip route get 172.31.1.1` muss das WLAN-Gerät und eine Quelladresse `172.31.1.x`
+   zeigen. Eine VPN- oder VMware-NAT-Route ist falsch.
+6. Prüfen und starten:
+
+```bash
+bash scripts/start-ubuntu.sh --check-direct
+bash scripts/start-ubuntu.sh
+```
+
+Der Prüfbefehl kontrolliert Abhängigkeit und Route ohne Roboterbefehle zu senden.
+Eine passende Route allein beweist keine Roboterverbindung.
+
+## Erstes Verbinden und Bedienen
+
+- **Connect Cozmo**: „Connected“ setzt echte Statusmeldungen voraus. Fehler führen
+  niemals zu einem automatischen Wechsel zum Simulator.
+- Zunächst Kamera, Batteriespannung und Augen testen. Eigene Fahr-/Kopf-/Liftbefehle
+  bleiben gesperrt. **Cozmo kann beim Protokollstart selbst kalibrieren.**
+- Cozmo auf einen freien Boden setzen, dann **Connection → Enable motors** wählen.
+  Nicht auf einer Tischkante testen.
+- **Control**: WASD zum Fahren gedrückt halten, loslassen zum Stoppen; Pfeiltasten
+  hoch/runter bewegen den Kopf, R/F den Lift. Anfangs 20 mm/s, maximal 40 mm/s.
+- **Speak**: lokales deutsches eSpeak NG über Cozmos Lautsprecher. Kein Mikrofon.
+  Kurze Texte, maximal ungefähr 30 Sekunden.
+- **Expressions / Animations**: eigene Augenbilder und Augenanimationen. Expressions
+  können bei freigegebenen Motoren zusätzlich Kopf-/Lift-Posen setzen.
+- **Camera**: echte Graustufenbilder, Vorschau bis 5 Bilder/s, PNG-Schnappschüsse.
+  Keine simulierten Gesichts-/Würfelmarkierungen.
+- **Cubes**: erster Klick verbindet einen erkannten Würfel, zweiter Klick setzt
+  seine LEDs auf Grün. Tap-/Bewegungsereignisse bleiben kurz sichtbar. Würfelbatterie,
+  Ausrichtung und Spiele sind nicht implementiert.
+- **STOP** bricht Desktop-Aktionen ab und sperrt die Bedienung bis **Resume controls**.
+  Nach Verbindungsfehlern erneut **Connect Cozmo** wählen. Nach Watchdog-, Pickup-,
+  Lade- oder Klippenereignissen zusätzlich **Enable motors** betätigen.
+
+## Grenzen der Stop-Funktion
+
+Ein separater Prozess besitzt die UDP-Verbindung. Er prüft Fahrbefehle mit 350 ms
+Gültigkeit sowie Desktop-Heartbeat und echte Telemetrie mit jeweils 800 ms Timeout.
+Fehlender Heartbeat, Pipe-Abbruch oder fehlende Telemetrie beendet die Sitzung.
+Klippen-Stopp wird im Protokoll aktiviert; erkannte Pickup-/Cliff-/Ladezustände
+sperren eigene Motorbefehle. Keine automatische Wiederverbindung oder Freigabe.
+
+Dies ist **kein hardwareverifizierter Not-Aus**: STOP wird an PyCozmo übergeben;
+Empfang und tatsächlicher Motorstillstand sind dadurch nicht bestätigt. Bei
+WLAN-Ausfall, Prozess-/OS-Absturz oder blockiertem Transport kann STOP ausbleiben.
+Die Firmware-Reaktion ist noch zu prüfen. Nur beaufsichtigt auf dem Boden testen;
+keine zugesicherte Stoppdistanz oder Stoppzeit.
+
+## Fehlerhilfe
+
+- Kein WLAN-Gerät: USB-Durchreichung und Linux-Treiber des Adapters prüfen.
+- Falsche Quelladresse: Ubuntu mit Cozmos WLAN verbinden; Route/VPN prüfen.
+- Keine Telemetrie: mobile App beenden, Cozmo aufwecken, WLAN erneut verbinden.
+- Python-Fehler: Startskript verwenden; es nutzt `.venv312`, nicht Python 3.14.
+- Motoren gesperrt: Kamera/Status prüfen, Cozmo vom Ladegerät auf den Boden setzen,
+  Resume controls nach STOP und anschließend Enable motors wählen.
+- Keine Sprache: `espeak-ng --version` prüfen. Proprietäre Sounds sind nicht nötig.
+
+## Physical validation record
+
+Pending: robot/firmware version, Ubuntu version, Wi-Fi adapter, connect/disconnect,
+camera/OLED, TTS, head/lift, supervised low-speed wheels, key/focus/STOP response,
+lost GUI/UDP/telemetry, pickup/cliff, individual cube connect/tap/lights. Record
+observed results before describing this adapter as stable. No original app assets,
+OBB archives or firmware images are downloaded by the application.

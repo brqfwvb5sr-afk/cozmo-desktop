@@ -1,6 +1,20 @@
 # Architecture
 
-Qt widgets → RobotController → RobotBackend → SimulatorBackend (milestone 1).
+Qt widgets → RobotController → RobotBackend → SimulatorBackend or DirectBackend.
+
+DirectBackend uses an inherited local multiprocessing pipe to a spawned worker.
+Only that worker imports/constructs the PyCozmo client and owns UDP. A 150-ms desktop
+heartbeat, 800-ms telemetry/heartbeat timeouts, 350-ms drive expiry, generation
+checks after STOP and explicit motor arming bound command lifetime. The worker
+publishes immutable real status snapshots and JPEG previews; a bounded sender queue
+prevents a blocked GUI pipe from blocking its watchdog. Pipe EOF stops the session.
+Physical STOP delivery and firmware reaction to lost Wi-Fi remain unverified.
+See DIRECT_CONNECTION.md for the experimental boundary and supervised test matrix.
+
+Speech is synthesized off the Qt loop by an optional local eSpeak NG executable,
+using stdin and fixed arguments. The worker validates WAV format/size, stops motors
+before audio encoding, then sends PyCozmo audio packets. No microphone or cloud is used.
+OLED eyes are original procedural images; no upstream resource downloader is called.
 
 qasync integrates Qt and asyncio on one event loop. Immutable state snapshots keep
 presentation separate from backend mutation. Controller-owned tasks isolate errors,

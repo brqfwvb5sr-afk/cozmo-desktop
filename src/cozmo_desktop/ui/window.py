@@ -24,7 +24,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from cozmo_desktop import __version__
 from cozmo_desktop.face.expressions import NAMES, Expression, apply_expression, render_face
+from cozmo_desktop.robot.base import RobotError
+from cozmo_desktop.robot.direct.backend import DirectBackend
+from cozmo_desktop.robot.simulator import SimulatorBackend
 from cozmo_desktop.services.controller import RobotController
 from cozmo_desktop.services.diagnostics import export_report
 from cozmo_desktop.storage.settings import Settings
@@ -34,7 +38,16 @@ from .control import ControlPage
 from .theme import STYLE
 from .widgets import RobotPreview, card, label, pixmap
 
-PAGES = ("Home", "Control", "Expressions", "Animations", "Camera", "Connection", "Settings")
+PAGES = (
+    "Home",
+    "Control",
+    "Expressions",
+    "Animations",
+    "Camera",
+    "Connection",
+    "Settings",
+    "Cubes",
+)
 KEYS: dict[int, str] = {Qt.Key.Key_W: "w", Qt.Key.Key_A: "a", Qt.Key.Key_S: "s", Qt.Key.Key_D: "d"}
 
 
@@ -47,6 +60,9 @@ class MainWindow(QMainWindow):
         self._closing_task: asyncio.Task[None] | None = None
         self._resume_task: asyncio.Task[None] | None = None
         self._last_frame: Image.Image | None = None
+        self._mode_task: asyncio.Task[None] | None = None
+        self._connection_task: asyncio.Task[None] | None = None
+        self._was_connected = False
         self.setWindowTitle("Cozmo Desktop · Simulation Mode")
         self.resize(1220, 840)
         self.setMinimumSize(1000, 760)
@@ -69,10 +85,12 @@ class MainWindow(QMainWindow):
         self.navigation.setAccessibleName("Main navigation")
         self.navigation.addItems(PAGES)
         side.addWidget(self.navigation, 1)
-        side.addWidget(label("SIMULATION MODE", "eyebrow"))
-        side.addWidget(label("A safe place to explore.\nNo robot required.", "muted", True))
+        self.mode_label = label("SIMULATION MODE", "eyebrow")
+        side.addWidget(self.mode_label)
+        self.mode_detail = label("No robot required.", "muted", True)
+        side.addWidget(self.mode_detail)
         side.addSpacing(20)
-        side.addWidget(label("Community edition · 0.1.0", "muted"))
+        side.addWidget(label(f"Version {__version__}", "muted"))
         root.addWidget(sidebar)
         main = QVBoxLayout()
         main.setContentsMargins(30, 24, 30, 18)
@@ -97,13 +115,8 @@ class MainWindow(QMainWindow):
         self.stop_button.clicked.connect(self.emergency_stop)
         header.addWidget(self.stop_button)
         main.addLayout(header)
-        main.addWidget(
-            label(
-                "SIMULATION MODE   /   Every reading and robot action below is synthetic.",
-                "notice",
-                True,
-            )
-        )
+        self.banner = label("", "notice", True)
+        main.addWidget(self.banner)
         self.stack = QStackedWidget()
         self.control = ControlPage(controller, self.release_controls)
         self.animations = AnimationsPage(controller, settings, directory)
@@ -115,6 +128,7 @@ class MainWindow(QMainWindow):
             self.camera_page(),
             self.connection_page(),
             self.settings_page(),
+            self.cubes_page(),
         ):
             scroll = QScrollArea()
             scroll.setWidgetResizable(True)
@@ -133,6 +147,7 @@ class MainWindow(QMainWindow):
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.refresh)
         self.timer.start(100)
+        self.apply_mode()
 
     def home_page(self) -> QWidget:
         page = QWidget()
@@ -199,9 +214,8 @@ class MainWindow(QMainWindow):
         page = QWidget()
         layout = QVBoxLayout(page)
         layout.addWidget(label("A face for every feeling.", "title"))
-        layout.addWidget(
-            label("Original procedural eyes with simulated head and lift poses.", "muted", True)
-        )
+        self.expression_description = label("", "muted", True)
+        layout.addWidget(self.expression_description)
         grid = QGridLayout()
         grid.setSpacing(16)
         self.expression_buttons: dict[str, QPushButton] = {}
@@ -237,12 +251,9 @@ class MainWindow(QMainWindow):
         page = QWidget()
         layout = QVBoxLayout(page)
         layout.addWidget(label("A view into his world.", "title"))
-        layout.addWidget(
-            label(
-                "Synthetic test scene · 10 FPS target · Test face and cube overlays", "muted", True
-            )
-        )
-        self.camera = label("Connect the simulator to see the camera.", "notice")
+        self.camera_description = label("", "muted", True)
+        layout.addWidget(self.camera_description)
+        self.camera = label("Connect to see the camera.", "notice")
         self.camera.setMinimumHeight(360)
         self.camera.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.camera, 1)
@@ -262,49 +273,146 @@ class MainWindow(QMainWindow):
     def connection_page(self) -> QWidget:
         page = QWidget()
         layout = QVBoxLayout(page)
-        layout.setSpacing(22)
-        layout.addWidget(label("Choose how you connect.", "title"))
-        layout.addWidget(label("Available now", "eyebrow"))
+        layout.setSpacing(18)
+        layout.addWidget(label("Connect your real Cozmo.", "title"))
+        self.backend_choice = QComboBox()
+        self.backend_choice.addItems(["Simulation Mode", "Direct Wi-Fi — experimental"])
+        self.backend_choice.setCurrentIndex(0 if self.controller.backend.is_simulation else 1)
+        self.backend_choice.currentIndexChanged.connect(self.select_backend)
+        layout.addWidget(self.backend_choice)
         layout.addWidget(
             label(
-                "Simulator — complete hardware-free workspace. Use Connect simulator above.",
+                "Direct Wi-Fi sends real commands to your robot. This adapter has automated "
+                "transport tests but has not yet been verified with physical hardware.",
                 "notice",
                 True,
             )
         )
-        backend = QComboBox()
-        backend.addItems(
-            ["Simulation Mode", "SDK bridge — not implemented", "Direct Wi-Fi — research only"]
-        )
-        for row in (1, 2):
-            backend.model().item(row).setEnabled(False)  # type: ignore[attr-defined]
-        layout.addWidget(backend)
-        layout.addWidget(label("Connecting a real Cozmo · future milestone", "title"))
         layout.addWidget(
             label(
-                "The SDK bridge requires the official phone app:\n\n"
-                "1. Connect your phone to Ubuntu by USB and authorize it.\n"
-                "2. Connect the phone to Cozmo’s Wi-Fi.\n"
-                "3. Open the Cozmo app and connect to your robot.\n"
-                "4. Enable SDK mode in the app.\n"
-                "5. A future bridge adapter will connect from this desktop app.\n\n"
-                "These steps do not enable hardware support in version 0.1.0.\n"
-                "ADB detection and bridge diagnostics are not implemented yet.",
+                "1. Install the direct extra and eSpeak NG while Internet is available.\n"
+                "2. In VMware: attach the USB Wi-Fi adapter to the Ubuntu guest.\n"
+                "3. Put Cozmo on his charger; raise/lower the lift to display the Wi-Fi key.\n"
+                "4. In Ubuntu Wi-Fi settings, join Cozmo_XXXXXX using that key.\n"
+                "5. Close the mobile Cozmo app. Select Direct Wi-Fi here, then Connect Cozmo.\n"
+                "6. Confirm live camera/state. Put Cozmo on a clear floor, then Enable motors.\n\n"
+                "No phone is needed. Ubuntu should receive a 172.31.1.x address. "
+                "Do not drive on a desk. Cozmo may calibrate during protocol initialization.",
                 "muted",
                 True,
             )
         )
+        self.arm_button = QPushButton("Enable motors")
+        self.arm_button.setObjectName("primary")
+        self.arm_button.clicked.connect(
+            lambda: self.controller.submit("arm", self.controller.backend.arm_motors)
+        )
+        layout.addWidget(self.arm_button)
+        self.motor_status = label("Motor control is locked.", "notice", True)
+        layout.addWidget(self.motor_status)
         layout.addWidget(
             label(
-                "Direct Wi-Fi: PyCozmo provides an upstream implementation. Our adapter remains "
-                "disabled pending compatibility and supervised hardware tests. "
-                "See docs/CONNECTION_RESEARCH.md.",
-                "notice",
+                "STOP cancels commands. Pickup, cliff/charger state or an expired drive command "
+                "locks motors again. The SDK/phone bridge is not implemented.",
+                "muted",
                 True,
             )
         )
         layout.addStretch()
         return page
+
+    def cubes_page(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.addWidget(label("Your little playmates.", "title"))
+        layout.addWidget(
+            label(
+                "Direct mode: first request connects a detected cube; press again to turn its LEDs "
+                "green. Only received connection/tap/movement events are shown. "
+                "Battery percentage and orientation are not available.",
+                "muted",
+                True,
+            )
+        )
+        self.cube_labels = []
+        self.cube_buttons = []
+        for number in range(1, 4):
+            text = label(f"Cube {number} · disconnected", "notice", True)
+            self.cube_labels.append(text)
+            layout.addWidget(text)
+            button = QPushButton(f"Connect / light Cube {number}")
+            button.clicked.connect(
+                lambda checked=False, value=number: self.controller.submit(
+                    "cube", lambda: self.controller.backend.cube_lights(value)
+                )
+            )
+            self.cube_buttons.append(button)
+            layout.addWidget(button)
+        layout.addStretch()
+        return page
+
+    def select_backend(self, index: int) -> None:
+        self.release_controls()
+        if self._mode_task is None or self._mode_task.done():
+            self._mode_task = asyncio.create_task(self._switch_backend(index))
+
+    async def _switch_backend(self, index: int) -> None:
+        self.backend_choice.setEnabled(False)
+        self.connect_button.setEnabled(False)
+        try:
+            if self._connection_task is not None:
+                self._connection_task.cancel()
+                await asyncio.gather(self._connection_task, return_exceptions=True)
+            backend = DirectBackend() if index else SimulatorBackend()
+            await self.controller.change_backend(backend)
+            self._last_frame = None
+            self._was_connected = False
+            self.animations.filter()
+            self.control.limit.setMaximum(backend.speed_cap)
+            self.control.limit.setValue(int(self.controller.speed_limit))
+            self.apply_mode()
+        except Exception:
+            self.controller.emergency_stop()
+            self.controller.message = "Could not change connection mode. Restart the application."
+        finally:
+            self.backend_choice.setEnabled(True)
+
+    def apply_mode(self) -> None:
+        simulated = self.controller.backend.is_simulation
+        self.setWindowTitle(
+            "Cozmo Desktop · " + ("Simulation Mode" if simulated else "Direct Wi-Fi")
+        )
+        self.mode_label.setText("SIMULATION MODE" if simulated else "DIRECT WI-FI")
+        self.mode_detail.setText(
+            "No robot required." if simulated else "Physical robot · experimental"
+        )
+        self.banner.setText(
+            "SIMULATION MODE / Every reading and action is synthetic."
+            if simulated
+            else "REAL COZMO / Experimental direct Wi-Fi. Enable motors explicitly to drive."
+        )
+        self.camera_description.setText(
+            "Synthetic scene · Test face/cube overlays"
+            if simulated
+            else "Live Cozmo camera · grayscale · up to 5 previews/second · no simulated overlays"
+        )
+        self.control.speech_description.setText(
+            "Simulated speech appears as text; no audio output."
+            if simulated
+            else "Speech uses local eSpeak NG and Cozmo’s speaker. No microphone is recorded."
+        )
+        self.animations.description.setText(
+            "Original simulator animations."
+            if simulated
+            else "Original OLED eye animations. No proprietary mobile app animation packs."
+        )
+        self.expression_description.setText(
+            "Original procedural eyes with simulated head and lift poses."
+            if simulated
+            else "Original OLED eyes. Head/lift poses run only when motors are enabled."
+        )
+        self.control.limit.setMaximum(self.controller.backend.speed_cap)
+        self.control.limit.setValue(int(self.controller.speed_limit))
 
     def settings_page(self) -> QWidget:
         page = QWidget()
@@ -348,8 +456,8 @@ class MainWindow(QMainWindow):
         layout.addWidget(export)
         layout.addWidget(
             label(
-                "AI conversation, voice recognition, real Freeplay, games and hardware "
-                "connections are planned. This version does not collect microphone input.",
+                "AI conversation, voice recognition, full Freeplay and games remain planned. "
+                "Direct Wi-Fi controls are experimental. No microphone input is collected.",
                 "notice",
                 True,
             )
@@ -366,15 +474,34 @@ class MainWindow(QMainWindow):
 
     async def wake(self) -> None:
         await self.controller.backend.connect()
-        await apply_expression(self.controller, Expression("Happy", 25, 0.2))
-        self.controller.message = "Hello, friend. Your simulated Cozmo is awake."
+        await self.controller.backend.display_face(render_face("Happy"), "Happy")
+        self.controller.message = "Connected. Physical motors remain locked until enabled."
 
     def toggle_connection(self) -> None:
         self.release_controls()
-        if self.controller.backend.state.connected:
-            self.controller.submit("connection", self.controller.disconnect)
-        else:
-            self.controller.submit("connection", self.controller.backend.connect)
+        if self._connection_task is None or self._connection_task.done():
+            self._connection_task = asyncio.create_task(self._toggle_connection())
+
+    async def _toggle_connection(self) -> None:
+        try:
+            if self.controller.backend.state.connected:
+                self._was_connected = False
+                await self.controller.disconnect()
+                return
+            self.controller.message = "Connecting…"
+            if self.controller.latched:
+                await self.controller.backend.disconnect()
+                await self.controller.resume()
+            if not self.controller.latched:
+                await self.controller.backend.connect()
+                self.controller.message = "Connected. Check Connection for motor status."
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            self.controller.emergency_stop(preserve_message=True)
+            self.controller.message = (
+                str(exc) if isinstance(exc, RobotError) else "Connection failed. Check Diagnostics."
+            )
 
     def toggle_idle(self) -> None:
         backend = self.controller.backend
@@ -427,7 +554,11 @@ class MainWindow(QMainWindow):
             if event.key() == Qt.Key.Key_Space and pressed:
                 self.emergency_stop()
                 return True
-            if self.stack.currentIndex() == 1 and not self.controller.latched:
+            if (
+                self.stack.currentIndex() == 1
+                and not self.controller.latched
+                and self.controller.backend.state.motors_enabled
+            ):
                 if event.key() in KEYS:
                     if pressed:
                         self.keys.add(KEYS[event.key()])
@@ -455,7 +586,15 @@ class MainWindow(QMainWindow):
         if self.controller.closing:
             return
         state = self.controller.backend.state
-        if self.controller.latched or not state.connected:
+        if (
+            self._was_connected
+            and not state.connected
+            and not self.controller.backend.is_simulation
+        ):
+            self.controller.emergency_stop(preserve_message=True)
+            self.controller.message = state.safety_status or "Connection lost. Motors locked."
+        self._was_connected = state.connected
+        if self.controller.latched or not state.connected or not state.motors_enabled:
             self.keys.clear()
             self.control.mouse_direction = None
         directions = self.keys | (
@@ -470,15 +609,30 @@ class MainWindow(QMainWindow):
                 lambda: self.controller.drive((forward + turn) * speed, (forward - turn) * speed),
             )
         self.connection_status.setText(
-            "●  Simulated connection" if state.connected else "○  Disconnected"
+            ("●  Simulator" if self.controller.backend.is_simulation else "●  Cozmo Wi-Fi")
+            if state.connected
+            else "○  Disconnected"
         )
-        self.connect_button.setText("Disconnect" if state.connected else "Connect simulator")
-        self.connect_button.setEnabled(not self.controller.latched)
+        self.connect_button.setText(
+            "Disconnect"
+            if state.connected
+            else ("Connect simulator" if self.controller.backend.is_simulation else "Connect Cozmo")
+        )
+        self.connect_button.setEnabled(
+            (self._mode_task is None or self._mode_task.done())
+            and (self._connection_task is None or self._connection_task.done())
+        )
         self.resume_button.setVisible(self.controller.latched)
         self.feedback.setText(self.controller.message)
         self.preview.state = state
         self.preview.update()
-        self.battery.setText(f"{state.battery:.0f}%")
+        self.battery.setText(
+            f"{state.battery:.0f}%"
+            if state.battery is not None
+            else (
+                f"{state.battery_voltage:.2f} V" if state.battery_voltage is not None else "Unknown"
+            )
+        )
         self.mood.setText(state.expression)
         self.cubes.setText(f"{sum(c.connected for c in state.cubes)} / 3")
         self.activity.setText(
@@ -490,18 +644,48 @@ class MainWindow(QMainWindow):
         )
         self.home_detail.setText(
             f"Camera {'ready' if state.camera_available else 'offline'} · "
-            f"{'Test face detected' if state.face_detected else 'No test face'} · "
+            f"{'Test face detected' if state.face_detected else 'Face recognition off'} · "
             f"{'Charging' if state.charging else 'Not charging'} · AI off · Autonomous driving off"
         )
         self.control.refresh(state)
-        if state.connected and self.stack.currentIndex() == 4:
+        self.arm_button.setEnabled(
+            state.connected and not state.motors_enabled and not self.controller.latched
+        )
+        self.motor_status.setText(
+            state.safety_status
+            or (
+                "Simulator motor controls are available."
+                if self.controller.backend.is_simulation
+                else "Motor control locked. Connect first, then select Enable motors."
+            )
+        )
+        for cube, text, button in zip(
+            state.cubes, self.cube_labels, self.cube_buttons, strict=True
+        ):
+            text.setText(
+                f"Cube {cube.number} · {'connected' if cube.connected else 'disconnected'}"
+                f" · {'tapped' if cube.tapped else 'no tap'}"
+                f" · {'moving' if cube.moved else 'still'}"
+            )
+            button.setEnabled(
+                state.connected
+                and not self.controller.backend.is_simulation
+                and not self.controller.latched
+            )
+        if state.connected and state.camera_available and self.stack.currentIndex() == 4:
             self.controller.submit("camera", self.update_camera)
-        elif not state.connected:
+        elif not state.connected or not state.camera_available:
             self._last_frame = None
-            self.camera.setText("Connect the simulator to see the camera.")
+            self.camera.setText(
+                "Waiting for camera frames." if state.connected else "Connect to see the camera."
+            )
 
     async def update_camera(self) -> None:
-        self._last_frame = await self.controller.backend.get_camera_frame()
+        try:
+            self._last_frame = await self.controller.backend.get_camera_frame()
+        except RobotError as exc:
+            self.camera.setText(str(exc))
+            return
         self.camera.setPixmap(
             pixmap(self._last_frame).scaled(
                 self.camera.size(),
@@ -517,7 +701,8 @@ class MainWindow(QMainWindow):
         try:
             directory = Path(self.settings.snapshots_directory).expanduser()
             directory.mkdir(parents=True, exist_ok=True)
-            path = directory / f"cozmo-simulation-{datetime.now():%Y%m%d-%H%M%S-%f}.png"
+            mode = self.controller.backend.state.backend_name
+            path = directory / f"cozmo-{mode}-{datetime.now():%Y%m%d-%H%M%S-%f}.png"
             self._last_frame.save(path)
             self.controller.message = f"Snapshot saved to {path.name}."
         except OSError:
@@ -561,6 +746,11 @@ class MainWindow(QMainWindow):
 
     async def _shutdown(self) -> None:
         self.timer.stop()
+        if self._connection_task is not None:
+            self._connection_task.cancel()
+            await asyncio.gather(self._connection_task, return_exceptions=True)
+        if self._mode_task is not None:
+            await self._mode_task
         await self.controller.shutdown()
         self._closed = True
         self.close()

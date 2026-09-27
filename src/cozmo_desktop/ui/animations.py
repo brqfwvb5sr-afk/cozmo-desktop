@@ -17,13 +17,8 @@ class AnimationsPage(QWidget):
         root = QVBoxLayout(self)
         root.setSpacing(16)
         root.addWidget(label("Small moments. Big personality.", "title"))
-        root.addWidget(
-            label(
-                "Original simulator animations. These are not mobile app assets or robot triggers.",
-                "muted",
-                True,
-            )
-        )
+        self.description = label("Original simulator animations.", "muted", True)
+        root.addWidget(self.description)
         self.search = QLineEdit()
         self.search.setPlaceholderText("Search animations or categories…")
         self.search.setAccessibleName("Search animations")

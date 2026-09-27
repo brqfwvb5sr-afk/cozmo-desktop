@@ -1,6 +1,6 @@
 # Cozmo Desktop contributor guide
 
-Build an honest, polished Ubuntu companion for Cozmo. Milestone 1 is simulator-only.
+Build an honest, polished Ubuntu companion for Cozmo. Direct Wi-Fi is experimental.
 Never claim hardware support based on a mock or source inspection.
 
 - `src/cozmo_desktop/robot`: asynchronous backend contract and simulator. No Qt here.
@@ -10,7 +10,7 @@ Never claim hardware support based on a mock or source inspection.
 - `docs/CONNECTION_RESEARCH.md`: pinned evidence, facts versus open questions.
 - `tests`: hardware-free unit and Qt interaction tests.
 
-Develop on Python 3.11/3.12: `pip install -e ".[dev]"`.
+Develop on Python 3.11/3.12: `pip install -e ".[dev,direct]"`.
 Run `pytest`, `ruff check .`, `mypy src`, `python -m build`.
 Linux headless tests: `QT_QPA_PLATFORM=offscreen pytest`.
 Launch: `python -m cozmo_desktop`. Ubuntu packaging: see `docs/PACKAGING.md`.
@@ -28,4 +28,7 @@ a process crash. Never run hardware tests unattended or disable cliff detection.
 License: GPL-3.0-or-later. Preserve upstream attribution if code is adapted.
 No proprietary app assets, downloaded animation packs, API keys, profiles, or private
 logs in Git. Document every dependency/adaptation in `docs/THIRD_PARTY.md`.
-Direct communication is disabled until reviewed and hardware-validated.
+Direct communication is an explicit experimental opt-in requested by the owner.
+Keep the simulator default. Never auto-connect, auto-arm or silently fall back.
+Automated tests must use a fake transport; hardware validation requires supervision.
+Do not claim physical validation until results are recorded in DIRECT_CONNECTION.md.

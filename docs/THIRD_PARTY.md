@@ -4,14 +4,14 @@ The application is GPL-3.0-or-later. Its UI, icon, procedural faces and syntheti
 camera frames are original. No proprietary app assets are included. This is an
 unofficial community project, unaffiliated with Anki or Digital Dream Labs.
 
-## Researched projects (not installed or bundled)
+## Researched projects and selected transport
 
 | Project | License inspected | Use |
 | --- | --- | --- |
 | [c64-dev/Cozmo.AI](https://github.com/c64-dev/Cozmo.AI) | GPL-3.0-or-later (`main.py` notice plus GPLv3 LICENSE) | Concepts: conversation/voice commands, idle behavior, photo and animation activities. No application code/assets copied. Standard GPL text reused as LICENSE. Credit: c64-dev. |
 | [Anki Cozmo Python SDK](https://github.com/anki/cozmo-python-sdk) | Apache-2.0; Copyright 2016–2017 Anki Inc. in root notice | API/transport research only; no copied implementation or asset. |
 | [c64-dev/cozmo-python-sdk](https://github.com/c64-dev/cozmo-python-sdk) | Apache-2.0, retaining Anki notices | Modernization/compatibility research only. |
-| [zayfod/PyCozmo](https://github.com/zayfod/pycozmo) | MIT root; NOTICE additionally credits Apache-2.0 SDK and cozmoclad code, Copyright 2016–2019 Anki Inc. | Direct protocol research only. Do not assume MIT covers external app resources. |
+| [zayfod/PyCozmo](https://github.com/zayfod/pycozmo) | MIT root; NOTICE additionally credits Apache-2.0 SDK and cozmoclad code, Copyright 2016–2019 Anki Inc. | Optional direct transport dependency, pinned 0.8.0. No external app resources. Root LICENSE/NOTICE and Apache text retained in docs/licenses. |
 | [nexo-robot/nexo-pycozmo](https://github.com/nexo-robot/nexo-pycozmo) | Metadata declares MIT; a full per-file audit is pending if adopted | Python compatibility metadata inspected; not integrated. |
 
 Exact inspected revisions and file-level findings: CONNECTION_RESEARCH.md.
@@ -30,8 +30,21 @@ GPLv3 compatibility with Apache-2.0 is described by the
 | [Python](https://www.python.org/downloads/source/) | PSF-2.0 and included third-party notices | Interpreter; system dependency on Ubuntu. |
 
 Dependencies are imported, not vendored into application source. Binary packages
-retain upstream wheel metadata/licenses and dynamically load libraries. No SDK,
-PyCozmo, Selenium, audio-recognition or external AI package is installed.
+retain upstream wheel metadata/licenses and dynamically load libraries.
+The optional `[direct]` extra (also included in the development .deb) adds:
+
+| Dependency/source | License | Use |
+| --- | --- | --- |
+| [PyCozmo 0.8.0](https://github.com/zayfod/pycozmo/tree/0.8.0) | MIT plus Apache-2.0 notices | Direct UDP protocol, image/audio encoding; imported, not copied |
+| [NumPy](https://github.com/numpy/numpy) | BSD-3-Clause and bundled notices | PyCozmo math and camera decoding |
+| [FlatBuffers](https://github.com/google/flatbuffers) | Apache-2.0 | PyCozmo import dependency; app animation resources unused |
+| [dpkt 1.9.8](https://github.com/kbandla/dpkt) | BSD-3-Clause | PyCozmo import dependency |
+| [eSpeak NG](https://github.com/espeak-ng/espeak-ng) | GPL-3.0-or-later plus bundled data notices | Optional Ubuntu system executable for local TTS, not vendored |
+| [uv](https://github.com/astral-sh/uv) | Apache-2.0 OR MIT | Source setup helper; not an application runtime dependency |
+
+No Selenium, speech recognition or external AI package is installed. No Anki SDK
+package or proprietary animation/sound pack is downloaded. The optional Python
+interpreter installed by uv retains its distribution notices.
 
 ## Build and test dependencies
 

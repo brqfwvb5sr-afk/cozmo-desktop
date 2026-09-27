@@ -4,7 +4,7 @@ Python 3.11 and 3.12 are the CI targets. Use a venv; no hardware, account or API
 is necessary. See README for Ubuntu system packages and installation.
 
 ```bash
-python -m pip install -e '.[dev]'
+python -m pip install -e '.[dev,direct]'
 pytest -q
 ruff check .
 ruff format --check .
@@ -33,3 +33,8 @@ smoke command exercises the actual qasync loop and process exit.
 Use `--config-dir PATH` to isolate test settings. Runtime data never belongs in Git.
 New backends must implement the ABC and independently enforce motor stop semantics.
 Do not broaden simulator behavior into hardware claims.
+
+Direct-mode tests construct the real PyCozmo codecs with an intercepted connection;
+spawn/pipe/watchdog tests use a fake transport. They never connect to robot Wi-Fi.
+Install `espeak-ng` to run the real local speech-encoding test (required in Linux CI).
+`--smoke-test` rejects `--backend direct` before creating any robot connection.

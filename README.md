@@ -4,8 +4,12 @@ A native, open-source desktop companion for Anki Cozmo, built for Ubuntu with
 Python and Qt. A place for controls, expressions, camera and, eventually, personality
 and conversation — with a hardware-independent architecture from the start.
 
-**Version 0.1.0 is a functional simulator milestone. Real robot connections are not
-implemented.** You can explore the application without a Cozmo, phone or API key.
+**Version 0.2.0 adds opt-in experimental direct Wi-Fi control of a physical Cozmo.**
+It is implemented and tested without hardware, but **not yet validated on a real robot**.
+Simulation remains the default; no phone or API key is needed.
+
+**Ubuntu / VMware / USB-WLAN: [Einrichtung für deinen echten Cozmo](docs/DIRECT_CONNECTION.md).**
+The setup script uses Python 3.12 even if Ubuntu ships Python 3.14.
 
 ![Cozmo Desktop Home, running in Simulation Mode](docs/screenshots/home.png)
 
@@ -15,16 +19,18 @@ application; its captures are attached to each successful Actions run.*
 ## Features
 
 - Native dark desktop workspace with Home, Control, Expressions, Animations,
-  Camera, Connection information and Settings.
+  Camera, Connection, Cubes and Settings.
 - Connect/disconnect a simulated Cozmo; inspect battery, pose, wheels, head, lift,
   synthetic face/cube state and camera readiness.
 - Hold graphical controls or WASD to drive. Head arrows and R/F lift controls.
 - Conservative 40 mm/s default, 80 mm/s cap, expiring drive lease, stop on release,
-  focus/navigation loss, errors and disconnect. A latched emergency STOP cancels work.
+  focus/navigation loss, errors and disconnect. Physical mode defaults to 20 mm/s,
+  caps at 40 mm/s and requires explicit motor arming. STOP latches desktop controls.
 - Nine original procedural expressions, four synthetic animations, search,
   favorites and local sequence save/load.
-- Simulated speech events displayed as text. No audio playback is claimed.
-- Synthetic camera scene with test face/cube overlays, fullscreen and PNG snapshots.
+- Direct mode: local eSpeak NG speech through Cozmo’s speaker; simulator: text events.
+- Direct mode: real grayscale camera, OLED faces and cube connect/green LEDs/tap events.
+- Simulator: synthetic camera with test overlays. Both modes support PNG snapshots.
 - Local settings and allowlisted diagnostic export; no cloud or microphone access.
 
 ## Current status and connection support
@@ -33,9 +39,10 @@ application; its captures are attached to each successful Actions run.*
 | --- | --- | --- |
 | Simulator | Implemented; automated backend/UI tests | No |
 | SDK bridge | Researched; adapter not implemented | Yes, for this connection architecture |
-| Direct Wi-Fi | Upstream implementation identified; our adapter disabled | Intended to work without a phone; not available here |
+| Direct Wi-Fi | Implemented, opt-in experimental; physical validation pending | No |
 
-**You cannot control a physical Cozmo with this release.** The original SDK talks
+The direct adapter sends real robot commands through PyCozmo 0.8.0. It never falls
+back to simulation on a connection error. The original SDK talks
 to the engine in the mobile app. PyCozmo implements a different, direct protocol.
 Read [connection research](docs/CONNECTION_RESEARCH.md) for pinned source evidence,
 compatibility concerns, licensing boundaries and unresolved questions.
@@ -62,8 +69,10 @@ pip install -e ".[dev]"
 python -m cozmo_desktop
 ```
 
-The `cozmo-desktop` launcher is also available after installation. No SDK, Selenium,
-OpenCV or speech packages are needed for this milestone.
+The `cozmo-desktop` launcher is also available after installation. For physical control,
+install the `[direct]` extra and eSpeak NG, or use `bash scripts/setup-ubuntu.sh`.
+Start with `bash scripts/start-ubuntu.sh` or select Direct Wi-Fi under Connection.
+See the [hardware instructions and limitations](docs/DIRECT_CONNECTION.md).
 
 An Ubuntu 24.04 amd64 `.deb` recipe and installation smoke test are included in CI.
 Download a successful build's `ubuntu-24.04-amd64-deb` artifact from
@@ -71,7 +80,7 @@ Download a successful build's `ubuntu-24.04-amd64-deb` artifact from
 then run:
 
 ```bash
-sudo apt install ./cozmo-desktop_0.1.0_amd64.deb
+sudo apt install ./cozmo-desktop_0.2.0_amd64.deb
 ```
 
 This adds Cozmo Desktop to the application menu. These are development artifacts,
@@ -99,14 +108,15 @@ pages or deactivating the window stops movement. The simulator independently sto
 unrenewed wheel commands after 350 ms, checked every 50 ms. This is software simulation,
 not a claim of a tested physical safety mechanism.
 
-Home's idle-expression mode is stationary and synthetic; it is **not** the original
+Home's idle-expression mode changes only the eyes; it is **not** the original
 Freeplay engine. No docking, autonomous driving, face identification or cube games
 are implemented. Simulated cube tap/movement and face detection events support tests;
-there is not yet a dedicated cube-management screen.
+the Cubes page additionally exposes real connection, tap/movement events and green LEDs
+in direct mode. Cube battery and orientation remain unknown.
 
 ## AI configuration and Cozmo.AI integration
 
-No AI provider is enabled in 0.1.0. The application starts without any API key.
+No AI provider is enabled in 0.2.0. The application starts without any API key.
 A strict, tested structured-response validator establishes the future action
 allowlist; it does not make network calls or execute model instructions.
 
@@ -143,18 +153,20 @@ QT_QPA_PLATFORM=offscreen python -m cozmo_desktop \
 
 See [architecture](docs/ARCHITECTURE.md), [development](docs/DEVELOPMENT.md),
 [AGENTS.md](AGENTS.md) and [contributing](CONTRIBUTING.md). Tests require no robot.
-Initial local validation: Python 3.12.10/Windows, 63 tests, Ruff, mypy and native Qt
-smoke test. Ubuntu 22.04/Python 3.11 and Ubuntu 24.04/Python 3.12 passed the initial
+Version 0.2.0 local validation: Python 3.12/Windows, 90 passing tests (the eSpeak NG
+test is reserved for Linux CI), Ruff, mypy and native Qt smoke test. Tests include real
+PyCozmo packet encoding and a spawned worker with fake hardware. Physical validation
+is pending. Ubuntu 22.04/Python 3.11 and Ubuntu 24.04/Python 3.12 passed the initial
 CI suite and Qt smoke tests; the Ubuntu 24.04 `.deb` built, installed and launched.
 Each subsequent commit reruns validation. See the repository Actions page for results
 on the exact revision you download, including the installed package's X11 launch check.
 
 ## Roadmap
 
-1. Implement and hardware-validate a modern Python SDK bridge with connection diagnostics.
+1. Hardware-validate the experimental direct adapter and record actual firmware results.
 2. Add animation discovery, cube controls, face tracking and cancellable personality states.
 3. Add optional speech recognition, provider-based conversation and safe voice commands.
-4. Prototype direct Wi-Fi using audited open-source transport, without proprietary assets.
+4. Evaluate an optional modern SDK/phone bridge without proprietary assets.
 5. Expand Ubuntu targets, AppImage packaging and release reproducibility.
 
 The detailed [roadmap](docs/ROADMAP.md) distinguishes existing features from planned work.
@@ -163,11 +175,14 @@ The detailed [roadmap](docs/ROADMAP.md) distinguishes existing features from pla
 
 - **Qt xcb plugin fails to load:** install the Ubuntu libraries listed above and run
   in a desktop session. Use `QT_QPA_PLATFORM=offscreen` only for headless tests.
-- **No physical robot detected:** expected; only Simulator is implemented.
-- **Controls stay stopped:** select Resume controls; reconnect if the simulator failed.
+- **No physical robot detected:** select Direct Wi-Fi, attach the USB Wi-Fi adapter to
+  Ubuntu, join Cozmo’s network and close the phone app. See DIRECT_CONNECTION.md.
+- **Controls stay stopped:** select Resume controls; in direct mode also Enable motors
+  on Connection after putting Cozmo on the floor. Reconnect after a connection failure.
 - **Invalid settings:** the app keeps the original file, reports the issue and uses
   safe defaults. Correct it or save new settings explicitly.
-- **No voice/audio:** speech is represented by text events; STT/TTS are future work.
+- **No voice/audio:** simulator speech is text-only; direct TTS requires `espeak-ng`.
+  Speech recognition and AI conversation are not implemented.
 - **Snapshots fail:** choose a writable folder in Settings.
 - **Windows offscreen screenshots have boxes instead of fonts:** use native Qt rendering.
 
