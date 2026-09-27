@@ -13,8 +13,13 @@ from cozmo_desktop.storage.settings import atomic_json
 
 class JsonFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
-        return json.dumps({"level": record.levelname, "time": self.formatTime(record),
-                           "event": record.getMessage()})
+        return json.dumps(
+            {
+                "level": record.levelname,
+                "time": self.formatTime(record),
+                "event": record.getMessage(),
+            }
+        )
 
 
 def configure_logging(directory: Path) -> None:
@@ -27,11 +32,17 @@ def configure_logging(directory: Path) -> None:
 
 
 def export_report(path: Path, state: RobotState, latched: bool) -> None:
-    atomic_json(path, {
-        "application_version": __version__, "os": platform.system(),
-        "python": platform.python_version(), "backend": "simulator",
-        "connected": state.connected, "emergency_stop": latched,
-        "camera_available": state.camera_available,
-        "cube_connections": [c.connected for c in state.cubes],
-        "hardware_support": "not implemented",
-    })
+    atomic_json(
+        path,
+        {
+            "application_version": __version__,
+            "os": platform.system(),
+            "python": platform.python_version(),
+            "backend": "simulator",
+            "connected": state.connected,
+            "emergency_stop": latched,
+            "camera_available": state.camera_available,
+            "cube_connections": [c.connected for c in state.cubes],
+            "hardware_support": "not implemented",
+        },
+    )

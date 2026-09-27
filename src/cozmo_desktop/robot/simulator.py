@@ -1,6 +1,7 @@
 """Deterministic synthetic robot. No sockets, USB, microphone or hardware access."""
 
 import asyncio
+import logging
 import math
 import time
 from dataclasses import replace
@@ -54,7 +55,9 @@ class SimulatorBackend(RobotBackend):
         if self._state.connected:
             return
         self._state = replace(
-            self._state, connected=True, camera_available=True,
+            self._state,
+            connected=True,
+            camera_available=True,
             cubes=tuple(CubeState(n, connected=True) for n in range(1, 4)),
         )
         self._event("Simulation connected")
@@ -63,7 +66,10 @@ class SimulatorBackend(RobotBackend):
     async def disconnect(self) -> None:
         await self.stop()
         self._state = replace(
-            self._state, connected=False, camera_available=False, face_detected=False,
+            self._state,
+            connected=False,
+            camera_available=False,
+            face_detected=False,
             cubes=tuple(CubeState(n) for n in range(1, 4)),
         )
         if self._ticker is not None:
@@ -75,8 +81,10 @@ class SimulatorBackend(RobotBackend):
     async def drive(self, left: float, right: float) -> None:
         self._require_connection()
         self._state = replace(
-            self._state, left_speed=bounded(left, -MAX_SPEED, MAX_SPEED),
-            right_speed=bounded(right, -MAX_SPEED, MAX_SPEED), freeplay=False,
+            self._state,
+            left_speed=bounded(left, -MAX_SPEED, MAX_SPEED),
+            right_speed=bounded(right, -MAX_SPEED, MAX_SPEED),
+            freeplay=False,
         )
         self._drive_until = time.monotonic() + DRIVE_LEASE
 
@@ -84,7 +92,11 @@ class SimulatorBackend(RobotBackend):
         self._animation_generation += 1
         self._drive_until = 0.0
         self._state = replace(
-            self._state, left_speed=0.0, right_speed=0.0, animation=None, freeplay=False,
+            self._state,
+            left_speed=0.0,
+            right_speed=0.0,
+            animation=None,
+            freeplay=False,
         )
 
     async def set_head_angle(self, angle: float) -> None:
@@ -111,7 +123,9 @@ class SimulatorBackend(RobotBackend):
         generation = self._animation_generation
         expression = {"Greeting": "Happy", "Happy": "Excited", "Idle": "Curious", "Sleep": "Sleepy"}
         self._state = replace(
-            self._state, animation=animation, expression=expression[match.category],
+            self._state,
+            animation=animation,
+            expression=expression[match.category],
         )
         self._event(f"Animation: {animation}")
         try:
@@ -167,15 +181,23 @@ class SimulatorBackend(RobotBackend):
         speed = (state.left_speed + state.right_speed) / 2
         face = int(self._elapsed / 6) % 2 == 1
         cubes = tuple(
-            replace(c, tapped=(int(self._elapsed) % 9 == c.number),
-                    moved=(int(self._elapsed) % 13 == c.number)) for c in state.cubes
+            replace(
+                c,
+                tapped=(int(self._elapsed) % 9 == c.number),
+                moved=(int(self._elapsed) % 13 == c.number),
+            )
+            for c in state.cubes
         )
         if face != state.face_detected:
             self._event("Synthetic face appeared" if face else "Synthetic face left")
         self._state = replace(
-            state, x=state.x + speed * math.cos(heading) * dt,
-            y=state.y + speed * math.sin(heading) * dt, heading=heading,
-            battery=max(0.0, state.battery - dt * 0.003), face_detected=face, cubes=cubes,
+            state,
+            x=state.x + speed * math.cos(heading) * dt,
+            y=state.y + speed * math.sin(heading) * dt,
+            heading=heading,
+            battery=max(0.0, state.battery - dt * 0.003),
+            face_detected=face,
+            cubes=cubes,
             expression=("Curious" if face else "Sleepy") if state.freeplay else state.expression,
         )
 
@@ -187,6 +209,16 @@ class SimulatorBackend(RobotBackend):
                 now = time.monotonic()
                 self.advance(min(now - previous, 0.1), now)
                 previous = now
+        except Exception as exc:
+            logging.getLogger(__name__).error("simulator_failed error_type=%s", type(exc).__name__)
+            self._state = replace(
+                self._state,
+                connected=False,
+                camera_available=False,
+                face_detected=False,
+                cubes=tuple(CubeState(n) for n in range(1, 4)),
+            )
+            self._event("Simulation interrupted; reconnect to continue")
         finally:
             # Includes unexpected ticker failures and cancellation.
             await self.stop()

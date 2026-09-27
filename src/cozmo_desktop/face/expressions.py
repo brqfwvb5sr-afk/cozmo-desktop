@@ -6,7 +6,17 @@ from PIL import Image, ImageDraw
 from cozmo_desktop.robot.base import RobotError
 from cozmo_desktop.services.controller import RobotController
 
-NAMES = ("Neutral", "Happy", "Sad", "Angry", "Surprised", "Curious", "Confused", "Sleepy", "Excited")
+NAMES = (
+    "Neutral",
+    "Happy",
+    "Sad",
+    "Angry",
+    "Surprised",
+    "Curious",
+    "Confused",
+    "Sleepy",
+    "Excited",
+)
 
 
 @dataclass(frozen=True)

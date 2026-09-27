@@ -19,7 +19,11 @@ def validate_response(payload: str) -> AIResponse:
     data = json.loads(payload)
     if not isinstance(data, dict) or set(data) - {"speech", "emotion", "action"}:
         raise ValueError("Unsupported AI fields.")
-    speech, emotion, action = data.get("speech"), data.get("emotion", "Neutral"), data.get("action", "none")
+    speech, emotion, action = (
+        data.get("speech"),
+        data.get("emotion", "Neutral"),
+        data.get("action", "none"),
+    )
     if not isinstance(speech, str) or not 1 <= len(speech.strip()) <= 500:
         raise ValueError("Invalid speech.")
     if not isinstance(emotion, str) or emotion not in NAMES:

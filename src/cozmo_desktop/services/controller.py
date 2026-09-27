@@ -19,6 +19,7 @@ class RobotController:
         self._tasks: dict[str, asyncio.Task[None]] = {}
         self._stop_task: asyncio.Task[None] | None = None
         self.closing = False
+        self._stop_epoch = 0
 
     def submit(self, name: str, operation: Callable[[], Awaitable[None]]) -> None:
         """Drop repeated in-flight requests; never build up a hardware command queue."""
@@ -33,14 +34,20 @@ class RobotController:
     async def _execute(self, name: str, operation: Callable[[], Awaitable[None]]) -> None:
         try:
             async with asyncio.timeout(15):
+                if self._stop_task is not None and not self._stop_task.done():
+                    await asyncio.shield(self._stop_task)
+                if self.latched or self.closing:
+                    return
                 await operation()
         except asyncio.CancelledError:
             raise
         except Exception as exc:
             # Deliberately exclude exception text: SDK/provider errors may contain keys.
             logger.error("command_failed operation=%s error_type=%s", name, type(exc).__name__)
-            self.message = str(exc) if isinstance(exc, RobotError) else (
-                "That operation failed. Controls have stopped; see Diagnostics."
+            self.message = (
+                str(exc)
+                if isinstance(exc, RobotError)
+                else ("That operation failed. Controls have stopped; see Diagnostics.")
             )
             self.emergency_stop(preserve_message=True)
         finally:
@@ -54,6 +61,7 @@ class RobotController:
                 task.cancel()
 
     def emergency_stop(self, *, preserve_message: bool = False) -> None:
+        self._stop_epoch += 1
         self.latched = True  # Synchronous: blocks commands even before stop coroutine runs.
         self._cancel_commands()
         if not preserve_message:
@@ -78,6 +86,7 @@ class RobotController:
             logger.error("stop_failed error_type=%s", type(exc).__name__)
 
     async def resume(self) -> None:
+        epoch = self._stop_epoch
         if self._stop_task is not None:
             await self._stop_task
         # Reconfirm STOP before unlocking; errors leave the latch in place.
@@ -88,8 +97,9 @@ class RobotController:
             logger.error("resume_failed error_type=%s", type(exc).__name__)
             self.message = "Unable to confirm stop. Reconnect before resuming."
             return
-        self.latched = False
-        self.message = "Controls ready. Hold a direction to drive."
+        if epoch == self._stop_epoch and not self.closing:
+            self.latched = False
+            self.message = "Controls ready. Hold a direction to drive."
 
     async def drive(self, left: float, right: float) -> None:
         if self.latched or self.closing:
@@ -107,6 +117,7 @@ class RobotController:
         self.message = "Disconnected. No movement is active."
 
     async def shutdown(self) -> None:
+        self._stop_epoch += 1
         self.closing = True
         self.latched = True
         self._cancel_commands()

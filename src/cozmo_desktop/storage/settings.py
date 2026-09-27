@@ -12,7 +12,9 @@ def config_directory() -> Path:
 @dataclass
 class Settings:
     speed_limit: int = 40
-    snapshots_directory: str = field(default_factory=lambda: str(Path.home() / "Pictures" / "Cozmo"))
+    snapshots_directory: str = field(
+        default_factory=lambda: str(Path.home() / "Pictures" / "Cozmo")
+    )
     favorites: list[str] = field(default_factory=list)
 
     @classmethod
