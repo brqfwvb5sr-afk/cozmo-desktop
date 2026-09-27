@@ -143,8 +143,11 @@ QT_QPA_PLATFORM=offscreen python -m cozmo_desktop \
 
 See [architecture](docs/ARCHITECTURE.md), [development](docs/DEVELOPMENT.md),
 [AGENTS.md](AGENTS.md) and [contributing](CONTRIBUTING.md). Tests require no robot.
-Initial local validation: Python 3.12.10/Windows, 62 tests, Ruff, mypy and native Qt
-smoke test. Linux test/package results are available on the repository Actions page.
+Initial local validation: Python 3.12.10/Windows, 63 tests, Ruff, mypy and native Qt
+smoke test. Ubuntu 22.04/Python 3.11 and Ubuntu 24.04/Python 3.12 passed the initial
+CI suite and Qt smoke tests; the Ubuntu 24.04 `.deb` built, installed and launched.
+Each subsequent commit reruns validation. See the repository Actions page for results
+on the exact revision you download, including the installed package's X11 launch check.
 
 ## Roadmap
 

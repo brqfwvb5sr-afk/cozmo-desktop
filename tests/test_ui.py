@@ -3,6 +3,7 @@ import asyncio
 import pytest
 from PySide6.QtCore import QEvent, Qt
 from PySide6.QtGui import QKeyEvent
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
 from cozmo_desktop.robot.simulator import SimulatorBackend
@@ -72,6 +73,25 @@ async def test_keyboard_focus_loss_and_page_change_stop(window):
     window.navigation.setCurrentRow(0)
     await asyncio.sleep(0.01)
     assert window.controller.backend.state.left_speed == 0
+
+
+async def test_real_qt_keyboard_events_and_release(window):
+    await connect_control(window)
+    QTest.keyPress(window.control, Qt.Key.Key_W)
+    window.refresh()
+    await asyncio.sleep(0.01)
+    assert window.controller.backend.state.left_speed == 40
+    QTest.keyRelease(window.control, Qt.Key.Key_W)
+    await asyncio.sleep(0.01)
+    assert window.controller.backend.state.left_speed == 0
+    QTest.keyClick(window.control, Qt.Key.Key_Up)
+    QTest.keyClick(window.control, Qt.Key.Key_R)
+    await asyncio.sleep(0.01)
+    assert window.controller.backend.state.head_angle == 5
+    assert window.controller.backend.state.lift_height == 0.1
+    QTest.keyClick(window.control, Qt.Key.Key_Space)
+    await asyncio.sleep(0.01)
+    assert window.controller.latched
 
 
 async def test_typing_focus_clears_held_keys(window):

@@ -20,7 +20,8 @@ explicitly invokes `/opt/cozmo-desktop/venv/bin/python` so it does not depend on
 build-directory shebangs. Qt libraries remain dynamically linked and replaceable.
 An original SVG icon and application menu entry are installed under `/usr/share`.
 
-CI builds the package, installs it on Ubuntu 24.04, runs the application smoke test,
+CI builds the package, installs it on Ubuntu 24.04, runs the application smoke test
+both offscreen and with the X11/xcb plugin under Xvfb,
 and uploads the `.deb`, Python source archive/wheel and dependency manifest. Download
 the matching artifact from the repository's Actions page; this is a development
 artifact, not a signed stable release. Keep a copy of the source archive with binaries.
