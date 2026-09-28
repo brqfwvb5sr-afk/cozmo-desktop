@@ -3,9 +3,15 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 if [[ "$(uname -s)" != Linux ]]; then
-    echo 'This script is for Ubuntu/Linux.' >&2
+    echo 'This script is for Linux.' >&2
     exit 1
 fi
+if [[ $# -gt 1 || ( $# -eq 1 && ${1:-} != --with-voice ) ]]; then
+    echo 'Usage: setup-ubuntu.sh [--with-voice]' >&2
+    exit 2
+fi
+extras='.[direct]'
+if [[ ${1:-} == --with-voice ]]; then extras='.[direct,voice]'; fi
 if command -v uv >/dev/null 2>&1; then
     uv_cmd=(uv)
 elif [[ -x .venv/bin/uv ]]; then
@@ -23,6 +29,6 @@ if [[ -x .venv312/bin/python ]]; then
 else
     "${uv_cmd[@]}" venv --python 3.12 .venv312
 fi
-"${uv_cmd[@]}" pip install --python .venv312/bin/python -e '.[direct]'
-echo 'Installed. Connect the Ubuntu USB Wi-Fi adapter to Cozmo, then:'
+"${uv_cmd[@]}" pip install --python .venv312/bin/python -e "$extras"
+echo 'Installed. Connect the USB Wi-Fi adapter to Cozmo, then:'
 echo 'bash scripts/start-ubuntu.sh'

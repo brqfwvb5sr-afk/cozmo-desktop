@@ -1,5 +1,11 @@
 # Roadmap and scope
 
+PrimTux is now the primary target and Ubuntu remains supported. The first
+PrimTux/Ollama implementation adds local provider discovery, bounded conversation,
+allowlisted reactions, optional Vosk push-to-talk, opt-in cube-event speech and
+read-only platform inventory. Physical PrimTux, microphone, offline Wi-Fi and robot
+validation are still pending; see [PHYSICAL_VALIDATION.md](PHYSICAL_VALIDATION.md).
+
 ## Implemented first milestone
 
 - Native dark Qt shell with Home, Control, Expressions, Animations, Camera,

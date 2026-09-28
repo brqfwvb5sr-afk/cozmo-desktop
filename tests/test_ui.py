@@ -243,10 +243,10 @@ async def test_games_page_starts_and_stop_cleans_cube_lights(window):
 async def test_conversation_page_sends_local_reply_and_speaks(window, monkeypatch):
     await connect_control(window)
     reply = AsyncMock(return_value=AIResponse("Hallo!", "Happy", "none"))
-    monkeypatch.setattr("cozmo_desktop.services.controller.local_reply", reply)
+    monkeypatch.setattr(window.controller.conversation, "reply", reply)
     window.navigation.setCurrentRow(9)
     await asyncio.sleep(0.01)
-    window.chat_model.setText("small:1b")
+    window.chat_model.addItem("small:1b")
     window.chat_input.setText("Guten Tag")
     window.chat_send.click()
     await window.controller._tasks["chat"]
@@ -255,6 +255,33 @@ async def test_conversation_page_sends_local_reply_and_speaks(window, monkeypatc
     assert window.chat_transcript.item(1).text() == "Cozmo: Hallo!"
     assert window.controller.backend.state.speech == "Hallo!"
     assert window.controller.backend.state.expression == "Happy"
+
+
+async def test_microphone_click_transcribes_into_same_local_chat_path(window, monkeypatch):
+    await connect_control(window)
+    window.settings.stt_model_de = "/models/de"
+    window.chat_model.addItem("gemma3:1b")
+    start = AsyncMock()
+    stop = AsyncMock(return_value="Hallo Cozmo")
+    monkeypatch.setattr(window.recognizer, "start", start)
+    monkeypatch.setattr(window.recognizer, "stop", stop)
+    monkeypatch.setattr(
+        window.controller.conversation,
+        "reply",
+        AsyncMock(return_value=AIResponse("Hallo!", "Happy", "none")),
+    )
+    window.navigation.setCurrentRow(9)
+    window.microphone.click()
+    await window._microphone_task
+    assert window.listening
+    window.microphone.click()
+    await window._microphone_task
+    assert not window.listening
+    assert window.controller.chat_busy
+    await window.controller._tasks["chat"]
+    assert window.controller.backend.state.speech == "Hallo!"
+    start.assert_awaited_once()
+    stop.assert_awaited_once()
 
 
 async def test_stationary_cliff_trace_ui_labels_and_exports(window, monkeypatch, tmp_path):

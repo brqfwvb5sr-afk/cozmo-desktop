@@ -13,7 +13,9 @@ See DIRECT_CONNECTION.md for the experimental boundary and supervised test matri
 
 Speech is synthesized off the Qt loop by an optional local eSpeak NG executable,
 using stdin and fixed arguments. The worker validates WAV format/size, stops motors
-before audio encoding, then sends PyCozmo audio packets. No microphone or cloud is used.
+before audio encoding, then sends PyCozmo audio packets. Optional local Vosk
+push-to-talk captures microphone audio only after the user presses its button;
+there is no cloud requirement.
 OLED eyes are original procedural images; no upstream resource downloader is called.
 The personality director and cube-game director are cancellable controller tasks.
 Only the worker can send physical commands. Freeplay wheel nudges require explicit
@@ -44,8 +46,8 @@ environment, speech content, profile names or raw exceptions. Logs contain opera
 and exception type, not user text or secret-bearing provider responses.
 
 Expression and sequence services operate on the controller, never on raw hardware.
-Optional local chat uses a bounded POST to Ollama at `127.0.0.1`; it runs in a thread
-and only after Send. The strict response validator permits bounded speech and known
-emotions. The conversation path refuses every model-requested action. Conversation
-history stays in memory and is cleared when switching backend; it is not logged or
-exported. No microphone or cloud service is used. See ROADMAP.md.
+Local conversation calls configured loopback Ollama through an asynchronous provider
+and a bounded, validated response. The allowlist permits only defined eyes, sound
+and small head/lift reactions through controller safety; AI wheels are absent.
+History stays in bounded session memory and is cleared when switching backend; it
+is not logged or exported. See AI_ARCHITECTURE.md and ROADMAP.md.

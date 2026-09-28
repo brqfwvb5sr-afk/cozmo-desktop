@@ -1,6 +1,11 @@
 # Cozmo Desktop contributor guide
 
-Build an honest, polished Ubuntu companion for Cozmo. Direct Wi-Fi is experimental.
+Build an honest, polished PrimTux-first companion for Cozmo. Ubuntu remains supported.
+The exact PrimTux base/version must be inventoried, never guessed. Ollama on localhost
+is the primary AI provider; offline use after model installation is a major goal.
+No mandatory cloud APIs or API keys. AI output is untrusted and can never bypass
+the controller, motor arming, STOP, cliff/pickup safety or worker watchdog.
+Direct Wi-Fi is experimental.
 Never claim hardware support based on a mock or source inspection.
 
 - `src/cozmo_desktop/robot`: asynchronous backend contract and simulator. No Qt here.

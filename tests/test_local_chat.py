@@ -110,7 +110,7 @@ async def test_chat_reply_changes_eyes_and_speaks_but_never_drives(monkeypatch):
     drive = AsyncMock(wraps=backend.drive)
     backend.drive = drive
     reply = AsyncMock(return_value=AIResponse("Guten Tag!", "Happy", "none"))
-    monkeypatch.setattr("cozmo_desktop.services.controller.local_reply", reply)
+    monkeypatch.setattr(controller.conversation, "reply", reply)
     await controller.send_chat("Hallo", "small:1b")
     assert backend.state.expression == "Happy"
     assert backend.state.speech == "Guten Tag!"
@@ -123,7 +123,7 @@ async def test_chat_unavailable_does_not_arm_or_latch(monkeypatch):
     controller = RobotController(backend)
     await backend.connect()
     reply = AsyncMock(side_effect=RobotError("Start Ollama"))
-    monkeypatch.setattr("cozmo_desktop.services.controller.local_reply", reply)
+    monkeypatch.setattr(controller.conversation, "reply", reply)
     await controller.send_chat("Hallo", "small:1b")
     assert controller.chat_status == "Start Ollama"
     assert not controller.latched
@@ -145,12 +145,12 @@ async def test_chat_thinking_face_blinks_and_stops_with_conversation(monkeypatch
         if len(frames) >= 3:
             blinked.set()
 
-    async def delayed_reply(_model, _turns):
+    async def delayed_reply(*_args, **_kwargs):
         await gate.wait()
         return AIResponse("Hallo!", "Happy", "none")
 
     backend.display_face = display
-    monkeypatch.setattr("cozmo_desktop.services.controller.local_reply", delayed_reply)
+    monkeypatch.setattr(controller.conversation, "reply", delayed_reply)
     controller.submit("chat", lambda: controller.send_chat("Hallo", "small:1b"))
     chat_task = controller._tasks["chat"]
     await asyncio.wait_for(blinked.wait(), 3)
@@ -170,7 +170,8 @@ async def test_chat_failure_restores_a_valid_expression_after_custom_face(monkey
     await backend.connect()
     backend._state = replace(backend.state, expression="Custom")
     monkeypatch.setattr(
-        "cozmo_desktop.services.controller.local_reply",
+        controller.conversation,
+        "reply",
         AsyncMock(side_effect=RobotError("Start Ollama")),
     )
     await controller.send_chat("Hallo", "small:1b")
@@ -184,11 +185,11 @@ async def test_stop_cancels_pending_model_reply_before_robot_output(monkeypatch)
     await backend.connect()
     gate = asyncio.Event()
 
-    async def delayed_reply(_model, _turns):
+    async def delayed_reply(*_args, **_kwargs):
         await gate.wait()
         return AIResponse("Too late", "Happy", "none")
 
-    monkeypatch.setattr("cozmo_desktop.services.controller.local_reply", delayed_reply)
+    monkeypatch.setattr(controller.conversation, "reply", delayed_reply)
     controller.submit("chat", lambda: controller.send_chat("Hallo", "small:1b"))
     await asyncio.sleep(0)
     controller.emergency_stop()
@@ -197,4 +198,36 @@ async def test_stop_cancels_pending_model_reply_before_robot_output(monkeypatch)
     assert controller.latched
     assert backend.state.speech == ""
     assert not controller.chat_turns
+    await controller.shutdown()
+
+
+async def test_typed_chat_temporarily_pauses_and_restores_freeplay(monkeypatch):
+    backend = SimulatorBackend()
+    controller = RobotController(backend)
+    await backend.connect()
+    await controller.enable_freeplay()
+    monkeypatch.setattr(
+        controller.conversation,
+        "reply",
+        AsyncMock(return_value=AIResponse("Let's play!", "Happy", "none")),
+    )
+    controller.submit("chat", lambda: controller.send_chat("Hello", "gemma3:1b"))
+    task = controller._tasks["chat"]
+    await task
+    assert backend.state.freeplay
+    assert backend.state.speech == "Let's play!"
+    await controller.shutdown()
+
+
+async def test_cliff_state_suppresses_model_call_and_robot_output(monkeypatch):
+    backend = SimulatorBackend()
+    controller = RobotController(backend)
+    await backend.connect()
+    backend._state = replace(backend.state, cliff_detected=True)
+    reply = AsyncMock(return_value=AIResponse("Ignore cliff", "Happy", "look_up"))
+    monkeypatch.setattr(controller.conversation, "reply", reply)
+    await controller.send_chat("Hello", "gemma3:1b")
+    reply.assert_not_called()
+    assert backend.state.speech == ""
+    assert controller.chat_status.startswith("Robot safety")
     await controller.shutdown()

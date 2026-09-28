@@ -15,11 +15,12 @@ Only the standard GPL license text is reproduced verbatim.
 | `freeplay`, `random_anim`, `bored_anim` | Cancellable personality service, stationary by default | Procedural expression/sound director plus explicit floor-only motion |
 | Chat reply to `say_text` | Validate structured speech/emotion/action before dispatch | Local reply speaks and changes eyes; all model actions rejected |
 
-`ai/local_chat.py` uses Python's standard-library HTTP client to call only a local
-Ollama service on explicit Send. No provider package, API key or microphone dependency
-is required at startup. Responses are never evaluated as code. The shared parser
-knows `none`, `greet` and `stop`, but the conversation path accepts **only `none`**.
-Speech length and emotion are bounded; no motor actions can originate from model text.
+The current PrimTux milestone adds a dedicated loopback-only Ollama provider and
+optional local Vosk push-to-talk. The table above records the older 0.3.0 baseline.
+Responses are never evaluated as code. Structured output permits only safe eye,
+head/lift and sound reactions through `RobotController`; it cannot command wheels.
+See [AI_ARCHITECTURE.md](AI_ARCHITECTURE.md) for the current pipeline and open
+hardware-validation boundary.
 
 If upstream code is later incorporated, preserve its GPL notices and authorship,
 list exact files/changes in THIRD_PARTY.md, and keep the combined work compatible.

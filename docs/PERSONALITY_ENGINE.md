@@ -24,3 +24,12 @@ roaming until the invitation is resolved or times out.
 Table/unknown surface selections lock wheels at the worker. Manual action, STOP,
 disconnect, focus loss and navigation cancel behavior. No claim of table-edge
 safety or physical validation is made.
+# Local Ollama integration
+
+The personality director continues to own autonomous moods, blinks, sounds and
+optional floor roaming. Conversation temporarily preempts Freeplay through
+`RobotController`, then resumes it only when connected, unlatched and safe. The
+model receives structured state and can suggest allowlisted eyes/head/lift reactions
+through the same controller. Spontaneous cube-event speech is opt-in, probabilistic
+and cooldown-limited. No AI wheel commands or continuous camera frames are used.
+See [AI_ARCHITECTURE.md](AI_ARCHITECTURE.md).

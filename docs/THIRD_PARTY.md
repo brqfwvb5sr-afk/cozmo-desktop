@@ -71,6 +71,16 @@ was consulted for the matching-color, red-trap and third-cube countdown rules.
 No example source code, animation triggers or assets were copied; game behavior
 here is independently implemented against the direct cube event interface.
 
+Optional offline microphone input uses [Vosk](https://alphacephei.com/vosk/)
+and [python-sounddevice](https://python-sounddevice.readthedocs.io/).
+Their packages and separate speech models are not bundled into the current `.deb`.
+Users select their own downloaded German/English Vosk model folders. The project's
+code does not copy model files or microphone recordings into the repository.
+
+[Ollama](https://ollama.com/) is a separately installed local server; models are
+not bundled or downloaded by this project. Check the individual model license
+before redistributing any model or a future all-in-one package.
+
 GitHub Actions uses checkout, setup-python and upload-artifact from
 [actions](https://github.com/actions), under MIT. Ubuntu system packages retain
 their distribution copyright notices. For each binary build consult its generated

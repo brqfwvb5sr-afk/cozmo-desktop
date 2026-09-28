@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased — PrimTux / local AI milestone
+
+- Make PrimTux the primary target while retaining shared Ubuntu direct Wi-Fi code.
+- Add read-only target inventory and honest PrimTux compatibility/validation docs.
+- Add a configurable loopback-only Ollama provider, installed-model discovery,
+  bounded conversation memory and validated safe reactions.
+- Add optional local Vosk push-to-talk, stop-response control, model/resource status,
+  and conservative opt-in cube-event speech during Freeplay.
+- Physical PrimTux, microphone, offline Ollama and real Cozmo validation remain pending.
+
 ## 0.3.0 — 2026-09-28
 
 - Add spontaneous procedural moods, gaze, blinking, five synthesized vocalizations and

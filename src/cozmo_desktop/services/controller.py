@@ -2,19 +2,28 @@
 
 import asyncio
 import logging
+import random
+import time
 from collections.abc import Awaitable, Callable
 
-from cozmo_desktop.ai.local_chat import ChatTurn, local_reply
+from cozmo_desktop.ai.conversation import ConversationService
+from cozmo_desktop.ai.local_chat import ChatTurn
+from cozmo_desktop.ai.providers.ollama import OllamaProvider
 from cozmo_desktop.robot.base import RobotBackend, RobotError
 from cozmo_desktop.robot.simulator import MAX_SPEED, bounded
 from cozmo_desktop.services.games import GAME_NAMES, GameDirector, GameState
+from cozmo_desktop.storage.settings import Settings
 
 logger = logging.getLogger(__name__)
 
 
 class RobotController:
-    def __init__(self, backend: RobotBackend, speed_limit: float = 40) -> None:
+    def __init__(
+        self, backend: RobotBackend, speed_limit: float = 40, settings: Settings | None = None
+    ) -> None:
         self.backend = backend
+        self.settings = settings or Settings()
+        self.conversation = ConversationService(OllamaProvider(self.settings.ollama_server))
         self.speed_limit = bounded(speed_limit, 10, min(MAX_SPEED, backend.speed_cap))
         self.latched = False
         self.message = "Choose a connection mode, then connect to Cozmo."
@@ -23,9 +32,11 @@ class RobotController:
         self.closing = False
         self._stop_epoch = 0
         self._freeplay_task: asyncio.Task[None] | None = None
+        self._spontaneous_task: asyncio.Task[None] | None = None
         self.freeplay_allows_motion = False
         self._game_task: asyncio.Task[None] | None = None
         self._game_director: GameDirector | None = None
+        self._resume_freeplay_after_chat: tuple[bool, bool] = (False, False)
 
         self.chat_turns: list[ChatTurn] = []
 
@@ -48,6 +59,11 @@ class RobotController:
             return
         if name in self._tasks and not self._tasks[name].done():
             return
+        if name not in ("camera", "chat") and self.chat_busy:
+            self._resume_freeplay_after_chat = (False, False)
+            self.stop_response()
+        if name == "chat" and self._freeplay_task is not None and not self._freeplay_task.done():
+            self._resume_freeplay_after_chat = (True, self.freeplay_allows_motion)
         if name not in ("camera", "freeplay", "game") and self._freeplay_task is not None:
             if not self._freeplay_task.done():
                 self._freeplay_task.cancel()
@@ -84,8 +100,31 @@ class RobotController:
         finally:
             if self._tasks.get(name) is asyncio.current_task():
                 self._tasks.pop(name, None)
+            if name == "chat":
+                active, movement = self._resume_freeplay_after_chat
+                self._resume_freeplay_after_chat = (False, False)
+                if (
+                    active
+                    and not self.latched
+                    and not self.closing
+                    and self.backend.state.connected
+                    and not any(
+                        (
+                            self.backend.state.cliff_detected,
+                            self.backend.state.picked_up,
+                            self.backend.state.falling,
+                            self.backend.state.on_charger,
+                        )
+                    )
+                ):
+                    try:
+                        await self.enable_freeplay(allow_movement=movement)
+                    except RobotError:
+                        self.message = (
+                            "Conversation ended; Freeplay needs to be restarted manually."
+                        )
 
-    async def send_chat(self, text: str, model: str) -> None:
+    async def send_chat(self, text: str, model: str, *, spontaneous: bool = False) -> None:
         from cozmo_desktop.face.expressions import NAMES, render_face
 
         text = text.strip()
@@ -94,6 +133,16 @@ class RobotController:
             return
         if not self.backend.state.connected:
             self.chat_status = "Connect to Cozmo first."
+            return
+        if self.latched or self.closing:
+            self.chat_status = "Robot controls are stopped."
+            return
+        state = self.backend.state
+        if state.cliff_detected or state.picked_up or state.falling or state.on_charger:
+            self.chat_status = "Robot safety state takes priority over conversation."
+            return
+        if not self.settings.ai_enabled:
+            self.chat_status = "Enable local AI in Settings first."
             return
         turn = ChatTurn("user", text)
         self.chat_status = "Thinking locally…"
@@ -104,7 +153,14 @@ class RobotController:
         thinking_task = asyncio.create_task(self._animate_thinking())
         try:
             try:
-                reply = await local_reply(model.strip(), (*self.chat_turns, turn))
+                reply = await self.conversation.reply(
+                    text,
+                    model.strip(),
+                    self.backend.state,
+                    temperature=self.settings.temperature,
+                    max_tokens=self.settings.max_tokens,
+                    remember=self.settings.memory_enabled and not spontaneous,
+                )
             finally:
                 thinking_task.cancel()
                 await asyncio.gather(thinking_task, return_exceptions=True)
@@ -113,16 +169,49 @@ class RobotController:
             raise
         except RobotError as exc:
             self.chat_status = str(exc)
-            if self.backend.state.connected:
+            current = self.backend.state
+            if current.connected and not any(
+                (current.cliff_detected, current.picked_up, current.falling, current.on_charger)
+            ):
                 await self.backend.display_face(
                     render_face(previous_expression), previous_expression
                 )
             return
-        await self.backend.display_face(render_face(reply.emotion), reply.emotion)
-        self.chat_turns.append(turn)
+        if self.latched or not self.backend.state.connected:
+            self.chat_status = "Conversation stopped."
+            return
+        state = self.backend.state
+        if state.cliff_detected or state.picked_up or state.falling or state.on_charger:
+            self.chat_status = "Robot safety state takes priority over the AI reply."
+            return
+        expression = reply.expression or reply.emotion
+        gaze = {"look_left": -5, "look_right": 5}.get(reply.action, 0)
+        await self.backend.display_face(render_face(expression, gaze=gaze), expression)
+        if reply.action in ("small_head_tilt", "look_up", "small_lift_move"):
+            safe_pose = state.motors_enabled and state.surface_mode == "floor"
+            if safe_pose and reply.action == "small_lift_move":
+                await self.backend.set_lift_height(min(1, state.lift_height + 0.1))
+            elif safe_pose:
+                await self.backend.set_head_angle(min(44.5, state.head_angle + 5))
+        if reply.sound:
+            await self.backend.play_sound(reply.sound)
+        if not spontaneous:
+            self.chat_turns.append(turn)
         self.chat_turns.append(ChatTurn("assistant", reply.speech))
+        del self.chat_turns[:-100]
         self.chat_status = "Reply ready."
         await self.backend.speak(reply.speech)
+
+    def stop_response(self) -> None:
+        task = self._tasks.get("chat")
+        if task is not None and not task.done():
+            task.cancel()
+            self.chat_status = "Conversation stopped."
+
+    def clear_chat_memory(self) -> None:
+        self.conversation.memory.clear()
+        self.chat_turns.clear()
+        self.chat_status = "Conversation memory cleared."
 
     async def _animate_thinking(self) -> None:
         from cozmo_desktop.face.expressions import render_face
@@ -144,6 +233,8 @@ class RobotController:
                 task.cancel()
         if self._freeplay_task is not None and not self._freeplay_task.done():
             self._freeplay_task.cancel()
+        if self._spontaneous_task is not None and not self._spontaneous_task.done():
+            self._spontaneous_task.cancel()
         if self._game_task is not None and not self._game_task.done():
             self._game_task.cancel()
 
@@ -189,6 +280,37 @@ class RobotController:
         director = PersonalityDirector(self.backend)
         self._freeplay_task = asyncio.create_task(director.run(allow_movement=allow_movement))
         self._freeplay_task.add_done_callback(self._freeplay_finished)
+        if self.settings.spontaneous_ai and self.settings.ollama_model:
+            self._spontaneous_task = asyncio.create_task(self._spontaneous_loop())
+
+    async def _spontaneous_loop(self) -> None:
+        """Occasional event-triggered speech; never runs without explicit setting."""
+        last_event = (
+            self.backend.state.cube_events[-1].ordinal if self.backend.state.cube_events else 0
+        )
+        last_call = time.monotonic()
+        rng = random.Random()
+        while self.backend.state.connected and self.backend.state.freeplay and not self.latched:
+            await asyncio.sleep(0.5)
+            events = self.backend.state.cube_events
+            if not events or events[-1].ordinal <= last_event:
+                continue
+            event = events[-1]
+            last_event = event.ordinal
+            if self.chat_busy or time.monotonic() - last_call < 90 or rng.random() >= 0.25:
+                continue
+            if self.backend.state.cliff_detected or self.backend.state.picked_up:
+                continue
+            last_call = time.monotonic()
+            event_text = "tapped" if event.kind == "tap" else "moved"
+            prompt = f"Cube {event.number} was {event_text}. React in one short sentence."
+            model = self.settings.ollama_model
+
+            async def spontaneous_reply(message: str = prompt, chosen_model: str = model) -> None:
+                await self.send_chat(message, chosen_model, spontaneous=True)
+
+            self.submit("chat", spontaneous_reply)
+            return
 
     def _freeplay_finished(self, task: asyncio.Task[None]) -> None:
         self.freeplay_allows_motion = False
@@ -202,6 +324,10 @@ class RobotController:
 
     async def disable_freeplay(self) -> None:
         self.freeplay_allows_motion = False
+        if self._spontaneous_task is not None:
+            self._spontaneous_task.cancel()
+            await asyncio.gather(self._spontaneous_task, return_exceptions=True)
+            self._spontaneous_task = None
         if self._freeplay_task is not None:
             self._freeplay_task.cancel()
             await asyncio.gather(self._freeplay_task, return_exceptions=True)
@@ -283,6 +409,7 @@ class RobotController:
             await self._stop_task
         await self.backend.disconnect()
         self.chat_turns.clear()
+        self.conversation.memory.clear()
         self.chat_status = "Enter an installed Ollama model and type a message."
         self.backend = backend
         self.speed_limit = min(

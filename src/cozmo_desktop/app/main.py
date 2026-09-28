@@ -30,7 +30,7 @@ def print_linux_network_status() -> None:
         try:
             result = subprocess.run(command, capture_output=True, text=True, timeout=3, check=True)
         except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
-            print(f"{title}: unavailable; check Ubuntu network tools and USB-Wi-Fi passthrough.")
+            print(f"{title}: unavailable; check Linux network tools and USB-Wi-Fi passthrough.")
         else:
             print(f"{title}:\n{result.stdout.strip()[:4096]}")
 
@@ -122,6 +122,7 @@ def main() -> int:
     controller = RobotController(
         DirectBackend() if args.backend == "direct" else SimulatorBackend(),
         min(settings.speed_limit, 20) if args.backend == "direct" else settings.speed_limit,
+        settings,
     )
     if startup_warning:
         controller.message = startup_warning

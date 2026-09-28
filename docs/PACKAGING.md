@@ -1,4 +1,11 @@
-# Ubuntu packaging
+# PrimTux and Ubuntu packaging
+
+PrimTux is the primary target, but the owner's variant, base libraries and CPU
+architecture are not yet inspected. Do not install the Ubuntu 24.04 `.deb` on PrimTux
+as if it were validated. Run the inventory in [PRIMTUX.md](PRIMTUX.md), then build
+and test a package against that actual base. The existing project-owned SVG icon
+and `cozmo-desktop.desktop` menu entry can be reused. Optional Vosk and Ollama
+models are not bundled. No PrimTux package has been built or validated yet.
 
 Source install targets Ubuntu 22.04 with Python 3.11 and Ubuntu 24.04 with Python
 3.12. The initial `.deb` recipe targets **Ubuntu 24.04 amd64 only**, using its system

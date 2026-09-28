@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
     QComboBox,
+    QDoubleSpinBox,
     QFileDialog,
     QFrame,
     QGridLayout,
@@ -20,12 +21,16 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QPushButton,
     QScrollArea,
+    QSpinBox,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
 
 from cozmo_desktop import __version__
+from cozmo_desktop.ai.providers.ollama import OllamaProvider, validate_endpoint
+from cozmo_desktop.ai.resources import detect_resources, model_memory_warning
+from cozmo_desktop.ai.speech import VoskPushToTalk
 from cozmo_desktop.face.expressions import NAMES, Expression, apply_expression, render_face
 from cozmo_desktop.robot.base import RobotError
 from cozmo_desktop.robot.direct.backend import DirectBackend
@@ -68,6 +73,12 @@ class MainWindow(QMainWindow):
         self._mode_task: asyncio.Task[None] | None = None
         self._connection_task: asyncio.Task[None] | None = None
         self._was_connected = False
+        self._ollama_checked = False
+        self._ollama_health_label = "Checking local Ollama…"
+        self._ollama_task: asyncio.Task[None] | None = None
+        self._microphone_task: asyncio.Task[None] | None = None
+        self.recognizer = VoskPushToTalk()
+        self.listening = False
         self.cliff_trace = CliffTrace()
         self.setWindowTitle("Cozmo Desktop · Simulation Mode")
         self.resize(1220, 840)
@@ -462,17 +473,27 @@ class MainWindow(QMainWindow):
         layout.addWidget(label("Talk with Cozmo.", "title"))
         layout.addWidget(
             label(
-                "Type a message for a model running locally in Ollama. Cozmo answers "
-                "through his speaker in direct mode and changes his eyes. The model "
-                "cannot control movement. No microphone or cloud service is used.",
+                "Use a local Ollama model by typing or pressing the microphone button. "
+                "Cozmo speaks through his speaker in direct mode. Microphone recognition "
+                "needs an optional local Vosk model; no cloud account is required.",
                 "notice",
                 True,
             )
         )
-        self.chat_model = QLineEdit()
-        self.chat_model.setPlaceholderText("Installed Ollama model name, e.g. gemma3:1b")
-        self.chat_model.setAccessibleName("Local Ollama model name")
-        layout.addWidget(self.chat_model)
+        self.ollama_status = label("Checking local Ollama…", "muted", True)
+        layout.addWidget(self.ollama_status)
+        self.ai_resources = label("Checking CPU and memory…", "muted", True)
+        layout.addWidget(self.ai_resources)
+        model_row = QHBoxLayout()
+        self.chat_model = QComboBox()
+        self.chat_model.setAccessibleName("Installed Ollama model")
+        if self.settings.ollama_model:
+            self.chat_model.addItem(self.settings.ollama_model)
+        model_row.addWidget(self.chat_model)
+        refresh_models = QPushButton("Refresh models")
+        refresh_models.clicked.connect(self.refresh_ollama)
+        model_row.addWidget(refresh_models)
+        layout.addLayout(model_row)
         self.chat_transcript = QListWidget()
         self.chat_transcript.setAccessibleName("Conversation transcript")
         layout.addWidget(self.chat_transcript, 1)
@@ -490,10 +511,22 @@ class MainWindow(QMainWindow):
         self.chat_send.clicked.connect(self.send_chat)
         row.addWidget(self.chat_send)
         layout.addLayout(row)
+        voice_row = QHBoxLayout()
+        self.chat_language = QComboBox()
+        self.chat_language.addItems(["German", "English"])
+        self.chat_language.setAccessibleName("Microphone language")
+        voice_row.addWidget(self.chat_language)
+        self.microphone = QPushButton("Start microphone")
+        self.microphone.clicked.connect(self.toggle_microphone)
+        voice_row.addWidget(self.microphone)
+        self.chat_stop = QPushButton("Stop response")
+        self.chat_stop.clicked.connect(self.controller.stop_response)
+        voice_row.addWidget(self.chat_stop)
+        layout.addLayout(voice_row)
         layout.addWidget(
             label(
-                "Install Ollama and a model separately in Ubuntu; use `ollama list` "
-                "to see installed names. Conversation stays in app memory for this session.",
+                "Download Ollama, a model and optional Vosk speech models while online. "
+                "Then conversation can run locally while connected only to Cozmo Wi-Fi.",
                 "muted",
                 True,
             )
@@ -507,9 +540,89 @@ class MainWindow(QMainWindow):
         if not text:
             self.controller.chat_status = "Type a message first."
             return
-        model = self.chat_model.text().strip()
+        model = self.chat_model.currentText().strip()
+        if not model:
+            self.controller.chat_status = "Select an installed Ollama model first."
+            return
+        self.settings.ollama_model = model
         self.controller.submit("chat", lambda: self.controller.send_chat(text, model))
         self.chat_input.clear()
+
+    def refresh_ollama(self) -> None:
+        if self._ollama_task is None or self._ollama_task.done():
+            self._ollama_task = asyncio.create_task(self._check_ollama())
+
+    async def _check_ollama(self) -> None:
+        self.ollama_status.setText("Checking local Ollama…")
+        resources = await asyncio.to_thread(detect_resources)
+        health = await OllamaProvider(self.settings.ollama_server).health()
+        self._ollama_health_label = f"Ollama: {health.status}"
+        self.ollama_status.setText(self._ollama_health_label)
+        selected = self.settings.ollama_model or self.chat_model.currentText()
+        self.chat_model.clear()
+        for item in health.models:
+            self.chat_model.addItem(item.name)
+        index = self.chat_model.findText(selected)
+        if index >= 0:
+            self.chat_model.setCurrentIndex(index)
+        if health.models:
+            self.settings.ollama_model = self.chat_model.currentText()
+        model = next((item for item in health.models if item.name == selected), None)
+        available = resources.available_ram_bytes
+        available_text = f"{available / 1024**3:.1f} GiB available" if available else "RAM unknown"
+        warning = model_memory_warning(model.size_bytes, available) if model else ""
+        self.ai_resources.setText(
+            f"{resources.architecture} · {resources.cpu_threads or '?'} CPU threads · "
+            f"{available_text}" + (f" · {warning}" if warning else "")
+        )
+        if health.status == "No model installed":
+            self.controller.chat_status = "Download a local model first: ollama pull gemma3:1b"
+
+    def toggle_microphone(self) -> None:
+        if self._microphone_task is not None and not self._microphone_task.done():
+            return
+        self.release_controls()
+        self._microphone_task = asyncio.create_task(self._microphone_step())
+
+    async def _microphone_step(self) -> None:
+        if self.controller.latched or not self.controller.backend.state.connected:
+            self.controller.chat_status = "Connect to Cozmo before speaking."
+            return
+        if self.listening:
+            self.controller.chat_status = "Transcribing locally…"
+            self.microphone.setEnabled(False)
+            try:
+                text = await self.recognizer.stop()
+            except RobotError as exc:
+                self.controller.chat_status = str(exc)
+            else:
+                self.chat_input.setText(text)
+                self.send_chat()
+            finally:
+                self.listening = False
+                self.microphone.setText("Start microphone")
+                self.microphone.setEnabled(True)
+            return
+        path = (
+            self.settings.stt_model_de
+            if self.chat_language.currentIndex() == 0
+            else self.settings.stt_model_en
+        )
+        if not path:
+            self.controller.chat_status = "Choose a local Vosk model folder in Settings first."
+            return
+        self.controller.chat_status = "Opening microphone…"
+        self.microphone.setEnabled(False)
+        try:
+            await self.recognizer.start(Path(path))
+        except RobotError as exc:
+            self.controller.chat_status = str(exc)
+        else:
+            self.listening = True
+            self.microphone.setText("Stop and transcribe")
+            self.controller.chat_status = "Listening… click again to transcribe."
+        finally:
+            self.microphone.setEnabled(True)
 
     def start_game(self) -> None:
         name = self.game_choice.currentText()
@@ -570,7 +683,7 @@ class MainWindow(QMainWindow):
         self.control.speech_description.setText(
             "Simulated speech appears as text; no audio output."
             if simulated
-            else "Speech uses local eSpeak NG and Cozmo’s speaker. No microphone is recorded."
+            else "Speech uses local eSpeak NG and Cozmo’s speaker. Microphone is opt-in on Talk."
         )
         self.animations.description.setText(
             "Original simulator animations."
@@ -601,6 +714,42 @@ class MainWindow(QMainWindow):
         self.snapshot_folder = QLineEdit(self.settings.snapshots_directory)
         self.snapshot_folder.setAccessibleName("Snapshot folder")
         layout.addWidget(self.snapshot_folder)
+        layout.addWidget(label("LOCAL AI · OLLAMA", "eyebrow"))
+        self.ai_enabled = QCheckBox("Enable local AI conversation")
+        self.ai_enabled.setChecked(self.settings.ai_enabled)
+        layout.addWidget(self.ai_enabled)
+        self.ollama_server = QLineEdit(self.settings.ollama_server)
+        self.ollama_server.setAccessibleName("Ollama server address")
+        layout.addWidget(self.ollama_server)
+        self.memory_enabled = QCheckBox("Remember recent conversation in this session")
+        self.memory_enabled.setChecked(self.settings.memory_enabled)
+        layout.addWidget(self.memory_enabled)
+        self.spontaneous_ai = QCheckBox("Spontaneous AI speech during Freeplay")
+        self.spontaneous_ai.setChecked(self.settings.spontaneous_ai)
+        layout.addWidget(self.spontaneous_ai)
+        advanced = QHBoxLayout()
+        advanced.addWidget(label("Temperature", "muted"))
+        self.ai_temperature = QDoubleSpinBox()
+        self.ai_temperature.setRange(0, 1)
+        self.ai_temperature.setSingleStep(0.1)
+        self.ai_temperature.setValue(self.settings.temperature)
+        advanced.addWidget(self.ai_temperature)
+        advanced.addWidget(label("Max tokens", "muted"))
+        self.ai_max_tokens = QSpinBox()
+        self.ai_max_tokens.setRange(32, 400)
+        self.ai_max_tokens.setValue(self.settings.max_tokens)
+        advanced.addWidget(self.ai_max_tokens)
+        layout.addLayout(advanced)
+        layout.addWidget(label("LOCAL VOSK MODEL FOLDERS", "eyebrow"))
+        self.stt_de = QLineEdit(self.settings.stt_model_de)
+        self.stt_de.setPlaceholderText("German model folder (optional)")
+        self.stt_en = QLineEdit(self.settings.stt_model_en)
+        self.stt_en.setPlaceholderText("English model folder (optional)")
+        layout.addWidget(self.stt_de)
+        layout.addWidget(self.stt_en)
+        clear_memory = QPushButton("Clear conversation memory")
+        clear_memory.clicked.connect(self.controller.clear_chat_memory)
+        layout.addWidget(clear_memory)
         layout.addWidget(
             label(
                 "The speed limiter on Control is saved with these settings. Dark theme and "
@@ -627,9 +776,8 @@ class MainWindow(QMainWindow):
         layout.addWidget(export)
         layout.addWidget(
             label(
-                "Optional local text conversation is on the Conversation page. Microphone "
-                "input and original app game assets are not included. Physical control "
-                "remains experimental.",
+                "Microphone speech recognition is optional and local. Original app "
+                "assets are not included. Physical control remains experimental.",
                 "notice",
                 True,
             )
@@ -744,6 +892,12 @@ class MainWindow(QMainWindow):
         self.keys.clear()
         self.control.mouse_direction = None
         self.controller.emergency_stop()
+        if self._microphone_task is not None and not self._microphone_task.done():
+            self._microphone_task.cancel()
+        if self.listening:
+            self.listening = False
+            self.microphone.setText("Start microphone")
+            asyncio.create_task(self.recognizer.cancel())
 
     def resume(self) -> None:
         self.keys.clear()
@@ -801,6 +955,9 @@ class MainWindow(QMainWindow):
     def refresh(self) -> None:
         if self.controller.closing:
             return
+        if not self._ollama_checked:
+            self._ollama_checked = True
+            self.refresh_ollama()
         state = self.controller.backend.state
         self.cliff_trace.observe(state)
         if (
@@ -885,8 +1042,17 @@ class MainWindow(QMainWindow):
                 )
             self.chat_transcript.scrollToBottom()
         self.chat_status.setText(self.controller.chat_status)
+        self.ollama_status.setText(
+            "Ollama: Generating" if self.controller.chat_busy else self._ollama_health_label
+        )
         self.chat_send.setEnabled(
             state.connected and not self.controller.latched and not self.controller.chat_busy
+        )
+        self.chat_stop.setEnabled(self.controller.chat_busy)
+        self.microphone.setEnabled(
+            state.connected
+            and not self.controller.latched
+            and (self._microphone_task is None or self._microphone_task.done())
         )
         self.surface_choice.setEnabled(
             state.connected and not self.controller.backend.is_simulation
@@ -996,8 +1162,24 @@ class MainWindow(QMainWindow):
         self.settings.snapshots_directory = directory
         self.settings.speed_limit = int(self.controller.speed_limit)
         try:
+            endpoint = validate_endpoint(self.ollama_server.text())
+        except ValueError as exc:
+            self.controller.message = str(exc)
+            return
+        self.settings.ai_enabled = self.ai_enabled.isChecked()
+        self.settings.ollama_server = endpoint
+        self.settings.ollama_model = self.chat_model.currentText()
+        self.settings.temperature = self.ai_temperature.value()
+        self.settings.max_tokens = self.ai_max_tokens.value()
+        self.settings.memory_enabled = self.memory_enabled.isChecked()
+        self.settings.spontaneous_ai = self.spontaneous_ai.isChecked()
+        self.settings.stt_model_de = self.stt_de.text().strip()
+        self.settings.stt_model_en = self.stt_en.text().strip()
+        self.controller.conversation.provider = OllamaProvider(endpoint)
+        try:
             self.settings.save(self.directory / "settings.json")
             self.controller.message = "Settings saved on this computer."
+            self.refresh_ollama()
         except OSError:
             self.controller.message = "Could not save settings. Check directory permissions."
 
@@ -1026,6 +1208,17 @@ class MainWindow(QMainWindow):
 
     async def _shutdown(self) -> None:
         self.timer.stop()
+        if self._ollama_task is not None:
+            self._ollama_task.cancel()
+            await asyncio.gather(self._ollama_task, return_exceptions=True)
+        if self._microphone_task is not None:
+            self._microphone_task.cancel()
+            await asyncio.gather(self._microphone_task, return_exceptions=True)
+        try:
+            await self.recognizer.cancel()
+        except Exception:
+            # Audio cleanup must never prevent the independent robot STOP/shutdown.
+            pass
         if self._connection_task is not None:
             self._connection_task.cancel()
             await asyncio.gather(self._connection_task, return_exceptions=True)

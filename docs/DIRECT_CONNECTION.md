@@ -1,5 +1,11 @@
 # Echter Cozmo unter Ubuntu / experimental direct Wi-Fi
 
+PrimTux is now the primary target; the same direct Wi-Fi code is shared by PrimTux
+and Ubuntu. PrimTux hardware compatibility is not yet verified. See
+[PRIMTUX.md](PRIMTUX.md) before choosing platform-specific installation commands.
+Local Ollama uses loopback and is designed to keep working when Cozmo Wi-Fi has no
+Internet; that exact combined setup still needs a physical test.
+
 Version 0.3.0 implements a physical adapter using PyCozmo 0.8.0. It sends real robot
 commands. Transport codecs, the worker watchdog and Qt integration have automated
 hardware-free tests. **Physical hardware validation is still pending.** No phone
@@ -89,11 +95,12 @@ Passwörter auszugeben. Eine passende Route allein beweist keine Roboterverbindu
   Die proprietäre Original-App und ihre Spiel-Engine sind nicht enthalten. Keepaway
   verfolgt den Würfel nicht räumlich; die direkte Verbindung liefert dafür derzeit
   keine verlässlich geprüfte Würfelposition. Während Spielen bleiben die Räder still.
-- **Conversation**: optionales lokales Ollama-Modell. In Ubuntu Ollama und ein Modell
-  separat installieren, mit `ollama list` dessen Namen prüfen, diesen in der App
-  eingeben und Text senden. Während des Wartens blickt und blinzelt Cozmo; die
-  Antwort erscheint und wird gesprochen. Beim Tippen bleibt autonomes Fahren aus.
-  Kein Mikrofon.
+- **Conversation**: Ollama und ein Modell separat installieren, dann in der App die
+  lokale Modellliste aktualisieren. Textnachrichten funktionieren ohne Mikrofon.
+  Optionales Push-to-talk benötigt Vosk und einen separat heruntergeladenen
+  deutschen/englischen Modellordner. Die Antwort erscheint und wird über Cozmo
+  gesprochen. Beim Gespräch pausiert Freeplay und setzt nur ohne STOP/Gefahr fort.
+  Siehe [OLLAMA.md](OLLAMA.md); Hardware und Offline-Betrieb sind noch ungeprüft.
 - **STOP** bricht Desktop-Aktionen ab und sperrt die Bedienung bis **Resume controls**.
   Nach Verbindungsfehlern erneut **Connect Cozmo** wählen. Nach Watchdog-, Pickup-,
   Lade- oder Klippenereignissen zusätzlich **Enable motors** betätigen.

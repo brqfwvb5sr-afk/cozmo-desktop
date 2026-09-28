@@ -1,8 +1,13 @@
 # Cozmo Desktop
 
-A native, open-source desktop companion for Anki Cozmo, built for Ubuntu with
+A native, open-source desktop companion for Anki Cozmo, targeting PrimTux first and
+Ubuntu second, with
 Python and Qt. It brings controls, expressions, camera, personality, cube games and
-optional local text conversation together behind a hardware-independent interface.
+local Ollama conversation together behind a hardware-independent interface.
+
+**Primary platform: PrimTux. Secondary platform: Ubuntu. AI: local/offline Ollama.**
+The owner's exact PrimTux version and hardware are not yet inspected. See the
+[PrimTux inventory](docs/PRIMTUX.md) and [compatibility matrix](docs/PLATFORM_COMPATIBILITY.md).
 
 **Version 0.3.0 includes opt-in experimental direct Wi-Fi control of a physical Cozmo.**
 It has automated tests, but **has not yet been validated on a real robot**.
@@ -37,9 +42,10 @@ application; its captures are attached to each successful Actions run.*
   arming. Table mode locks wheels.
 - Original-code Quick Tap, Memory Match and Keepaway rule recreations using cube events.
   These do not contain the original mobile game's engine or assets.
-- Optional text conversation through locally running Ollama, bounded to speech and
-  eye expressions. No model is installed or contacted automatically.
-- Local settings and allowlisted diagnostic export; no cloud or microphone access.
+- Local Ollama conversation with installed-model selection, bounded memory and
+  validated safe expressions/reactions. Optional local Vosk push-to-talk for German
+  and English; no model is installed or contacted automatically.
+- Local settings and allowlisted diagnostic export; microphone is opt-in and offline.
 - Bounded motor-locked cliff-sensor trace for supervised table-edge measurements.
 
 ## Current status and connection support
@@ -57,6 +63,10 @@ Read [connection research](docs/CONNECTION_RESEARCH.md) for pinned source eviden
 compatibility concerns, licensing boundaries and unresolved questions.
 
 ## Ubuntu requirements and installation
+
+PrimTux source setup: `bash scripts/setup-primtux.sh`, then
+`bash scripts/start-primtux.sh`. Inspect the target first with
+`bash scripts/primtux-info.sh`; [installation details](docs/PRIMTUX.md).
 
 Source/CI targets: Ubuntu 22.04 with Python 3.11, Ubuntu 24.04 with Python 3.12.
 Ubuntu 22.04's default Python 3.10 is too old; provide a Python 3.11 interpreter or
@@ -126,21 +136,19 @@ face identification is implemented. Cube battery and orientation remain unknown.
 
 ## AI configuration and Cozmo.AI integration
 
-The app starts without any AI provider or API key. On the Conversation page, enter
-the name of a model already installed in local [Ollama](https://ollama.com/download/linux)
-and type a message. The app sends that message to `127.0.0.1:11434` only when you
-press Send. The model's bounded structured reply changes Cozmo's eyes and is spoken
-through his speaker in direct mode. It cannot request movement or arbitrary actions.
-Use `ollama list` in Ubuntu to see installed model names. The simulator shows speech
-as text. Microphone input is not implemented.
+The app starts without a model or API key. On **Talk with Cozmo**, select a model
+already installed in local [Ollama](https://docs.ollama.com/linux), type a message
+or use optional push-to-talk with a downloaded German/English Vosk model. The
+conversation service calls only the configured loopback server; its validated reply
+changes Cozmo's eyes and is spoken through his speaker in direct mode. AI wheel
+commands are forbidden, and head/lift reactions respect existing arming/safety.
+The simulator shows speech as text. See [Ollama setup](docs/OLLAMA.md).
 
 Cozmo.AI was inspected before implementation. Its concepts informed the roadmap,
 but no application code/assets were copied and its `main.py` is not launched.
-Selenium chatbot scraping is replaced here by optional local Ollama conversation;
-separate STT remains future work. See [integration status](docs/COZMO_AI_INTEGRATION.md).
-
-Future OpenAI support will read `OPENAI_API_KEY` from the environment or a secure
-credential store. Do not paste keys into tracked settings or commit `.env` files.
+Selenium chatbot scraping is replaced here by local Ollama conversation; Vosk is
+an optional offline STT provider. No cloud service or API key is required.
+See [integration status](docs/COZMO_AI_INTEGRATION.md).
 
 ## Local data and diagnostics
 
