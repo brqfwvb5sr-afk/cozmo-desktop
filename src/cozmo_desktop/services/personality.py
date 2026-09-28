@@ -42,7 +42,7 @@ class PersonalityDirector:
         self.gaze = 0
         self.last_taps = tuple(c.tap_sequence for c in backend.state.cubes)
         self.last_moves = tuple(c.move_sequence for c in backend.state.cubes)
-        self.last_tapped_number = 0
+        self.recent_taps: frozenset[int] = frozenset()
         self.next_mood = 0.0
         self.next_blink = 0.0
         self.next_sound = 0.0
@@ -56,17 +56,14 @@ class PersonalityDirector:
     def _event_mood(self, state: RobotState) -> str | None:
         taps = tuple(c.tap_sequence for c in state.cubes)
         moves = tuple(c.move_sequence for c in state.cubes)
-        tapped = any(current > prior for current, prior in zip(taps, self.last_taps, strict=True))
-        self.last_tapped_number = next(
-            (
-                number
-                for number, (current, prior) in enumerate(
-                    zip(taps, self.last_taps, strict=True), start=1
-                )
-                if current > prior
-            ),
-            0,
+        self.recent_taps = frozenset(
+            number
+            for number, (current, prior) in enumerate(
+                zip(taps, self.last_taps, strict=True), start=1
+            )
+            if current > prior
         )
+        tapped = bool(self.recent_taps)
         moved = any(current > prior for current, prior in zip(moves, self.last_moves, strict=True))
         self.last_taps, self.last_moves = taps, moves
         if any(getattr(state, flag) for flag in HAZARDS):
@@ -117,7 +114,7 @@ class PersonalityDirector:
                         if cube_connected:
                             await self.backend.set_cube_color(self.invite_cube, "off")
                         self.invite_cube = 0
-                    elif self.last_tapped_number == self.invite_cube and not self.invite_succeeded:
+                    elif self.invite_cube in self.recent_taps and not self.invite_succeeded:
                         await self.backend.set_cube_color(self.invite_cube, "green")
                         self.invite_succeeded = True
                         self.invite_until = now + 0.6

@@ -42,6 +42,12 @@ def test_event_driven_mood_and_safety_gate():
     tapped = replace(state, cubes=(CubeState(1, tap_sequence=1), *state.cubes[1:]))
     assert director._event_mood(tapped) == "Happy"
     assert director._event_mood(tapped) is None
+    double_tap = replace(
+        tapped,
+        cubes=(CubeState(1, tap_sequence=2), CubeState(2, tap_sequence=1), state.cubes[2]),
+    )
+    assert director._event_mood(double_tap) == "Happy"
+    assert director.recent_taps == frozenset((1, 2))
     moved = replace(tapped, cubes=(CubeState(1, tap_sequence=1, move_sequence=1), *state.cubes[1:]))
     assert director._event_mood(moved) == "Curious"
     for flag in ("cliff_detected", "picked_up", "falling", "on_charger"):
