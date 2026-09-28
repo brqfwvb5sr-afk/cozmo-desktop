@@ -1,3 +1,4 @@
+import asyncio
 import json
 import urllib.error
 from io import BytesIO
@@ -109,3 +110,25 @@ async def test_chat_unavailable_does_not_arm_or_latch(monkeypatch):
     assert controller.chat_status == "Start Ollama"
     assert not controller.latched
     assert backend.state.speech == ""
+
+
+async def test_stop_cancels_pending_model_reply_before_robot_output(monkeypatch):
+    backend = SimulatorBackend()
+    controller = RobotController(backend)
+    await backend.connect()
+    gate = asyncio.Event()
+
+    async def delayed_reply(_model, _turns):
+        await gate.wait()
+        return AIResponse("Too late", "Happy", "none")
+
+    monkeypatch.setattr("cozmo_desktop.services.controller.local_reply", delayed_reply)
+    controller.submit("chat", lambda: controller.send_chat("Hallo", "small:1b"))
+    await asyncio.sleep(0)
+    controller.emergency_stop()
+    gate.set()
+    await asyncio.sleep(0.02)
+    assert controller.latched
+    assert backend.state.speech == ""
+    assert not controller.chat_turns
+    await controller.shutdown()
