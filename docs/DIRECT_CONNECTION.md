@@ -90,7 +90,9 @@ Eine passende Route allein beweist keine Roboterverbindung.
   keine verlässlich geprüfte Würfelposition. Während Spielen bleiben die Räder still.
 - **Conversation**: optionales lokales Ollama-Modell. In Ubuntu Ollama und ein Modell
   separat installieren, mit `ollama list` dessen Namen prüfen, diesen in der App
-  eingeben und Text senden. Die Antwort erscheint und wird gesprochen. Kein Mikrofon.
+  eingeben und Text senden. Während des Wartens blickt und blinzelt Cozmo; die
+  Antwort erscheint und wird gesprochen. Beim Tippen bleibt autonomes Fahren aus.
+  Kein Mikrofon.
 - **STOP** bricht Desktop-Aktionen ab und sperrt die Bedienung bis **Resume controls**.
   Nach Verbindungsfehlern erneut **Connect Cozmo** wählen. Nach Watchdog-, Pickup-,
   Lade- oder Klippenereignissen zusätzlich **Enable motors** betätigen.

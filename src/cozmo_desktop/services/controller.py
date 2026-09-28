@@ -86,7 +86,7 @@ class RobotController:
                 self._tasks.pop(name, None)
 
     async def send_chat(self, text: str, model: str) -> None:
-        from cozmo_desktop.face.expressions import render_face
+        from cozmo_desktop.face.expressions import NAMES, render_face
 
         text = text.strip()
         if not 1 <= len(text) <= 400:
@@ -97,19 +97,45 @@ class RobotController:
             return
         turn = ChatTurn("user", text)
         self.chat_status = "Thinking locally…"
+        previous_expression = self.backend.state.expression
+        if previous_expression not in NAMES:
+            previous_expression = "Neutral"
+        await self.backend.display_face(render_face("Curious"), "Curious")
+        thinking_task = asyncio.create_task(self._animate_thinking())
         try:
-            reply = await local_reply(model.strip(), (*self.chat_turns, turn))
+            try:
+                reply = await local_reply(model.strip(), (*self.chat_turns, turn))
+            finally:
+                thinking_task.cancel()
+                await asyncio.gather(thinking_task, return_exceptions=True)
         except asyncio.CancelledError:
             self.chat_status = "Conversation stopped."
             raise
         except RobotError as exc:
             self.chat_status = str(exc)
+            if self.backend.state.connected:
+                await self.backend.display_face(
+                    render_face(previous_expression), previous_expression
+                )
             return
         await self.backend.display_face(render_face(reply.emotion), reply.emotion)
         self.chat_turns.append(turn)
         self.chat_turns.append(ChatTurn("assistant", reply.speech))
         self.chat_status = "Reply ready."
         await self.backend.speak(reply.speech)
+
+    async def _animate_thinking(self) -> None:
+        from cozmo_desktop.face.expressions import render_face
+
+        gaze = -5
+        while True:
+            await asyncio.sleep(1.2)
+            await self.backend.display_face(
+                render_face("Curious", gaze=gaze, blink=True), "Curious"
+            )
+            await asyncio.sleep(0.12)
+            await self.backend.display_face(render_face("Curious", gaze=gaze), "Curious")
+            gaze = -gaze
 
     def _cancel_commands(self) -> None:
         current = asyncio.current_task()

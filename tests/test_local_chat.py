@@ -1,6 +1,7 @@
 import asyncio
 import json
 import urllib.error
+from dataclasses import replace
 from io import BytesIO
 from unittest.mock import AsyncMock
 
@@ -110,6 +111,54 @@ async def test_chat_unavailable_does_not_arm_or_latch(monkeypatch):
     assert controller.chat_status == "Start Ollama"
     assert not controller.latched
     assert backend.state.speech == ""
+
+
+async def test_chat_thinking_face_blinks_and_stops_with_conversation(monkeypatch):
+    backend = SimulatorBackend()
+    controller = RobotController(backend)
+    await backend.connect()
+    gate = asyncio.Event()
+    blinked = asyncio.Event()
+    frames = []
+    original_display = backend.display_face
+
+    async def display(frame, name="Custom"):
+        frames.append(frame.tobytes())
+        await original_display(frame, name)
+        if len(frames) >= 3:
+            blinked.set()
+
+    async def delayed_reply(_model, _turns):
+        await gate.wait()
+        return AIResponse("Hallo!", "Happy", "none")
+
+    backend.display_face = display
+    monkeypatch.setattr("cozmo_desktop.services.controller.local_reply", delayed_reply)
+    controller.submit("chat", lambda: controller.send_chat("Hallo", "small:1b"))
+    chat_task = controller._tasks["chat"]
+    await asyncio.wait_for(blinked.wait(), 3)
+    assert len(set(frames)) > 1
+    assert backend.state.expression == "Curious"
+    controller.emergency_stop()
+    gate.set()
+    await asyncio.gather(chat_task, return_exceptions=True)
+    assert backend.state.speech == ""
+    assert len(frames) == 3
+    await controller.shutdown()
+
+
+async def test_chat_failure_restores_a_valid_expression_after_custom_face(monkeypatch):
+    backend = SimulatorBackend()
+    controller = RobotController(backend)
+    await backend.connect()
+    backend._state = replace(backend.state, expression="Custom")
+    monkeypatch.setattr(
+        "cozmo_desktop.services.controller.local_reply",
+        AsyncMock(side_effect=RobotError("Start Ollama")),
+    )
+    await controller.send_chat("Hallo", "small:1b")
+    assert backend.state.expression == "Neutral"
+    assert controller.chat_status == "Start Ollama"
 
 
 async def test_stop_cancels_pending_model_reply_before_robot_output(monkeypatch):

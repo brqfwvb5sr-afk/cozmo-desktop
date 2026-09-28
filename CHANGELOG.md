@@ -13,6 +13,7 @@
 - Add original-code Quick Tap, Memory Match and Keepaway rule recreations with cube LEDs.
 - Let Quick Tap's virtual Cozmo opponent respond on a timer and mark failed games clearly.
 - Add optional local Ollama text conversation with bounded speech and emotion output.
+- Animate Cozmo's eyes while a local conversation reply is pending; STOP cancels the animation.
 - Extend tests for cube event ordering, safety gates, personality and conversation.
 - Physical robot, table-edge stopping and game timing validation remain pending.
 
