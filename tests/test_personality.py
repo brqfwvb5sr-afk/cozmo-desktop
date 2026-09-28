@@ -199,6 +199,36 @@ async def test_roam_halts_when_a_hazard_appears_mid_move(monkeypatch):
     await robot.disconnect()
 
 
+async def test_roam_stops_for_cube_interaction_before_reacting(monkeypatch):
+    robot = SimulatorBackend()
+    await robot.connect()
+    await robot.enable_freeplay()
+    clock = VirtualClock()
+    wheels = []
+    original_drive = robot.drive
+
+    async def drive(left, right):
+        wheels.append((left, right))
+        await original_drive(left, right)
+
+    monkeypatch.setattr(robot, "drive", drive)
+    director = PersonalityDirector(robot, clock=clock.time, pause=clock.pause)
+    director.rng.choice = lambda choices: choices[0]
+
+    def tap_during_motion():
+        if len(wheels) == 2:
+            robot._state = replace(
+                robot.state,
+                cubes=(replace(robot.state.cubes[0], tap_sequence=1), *robot.state.cubes[1:]),
+            )
+
+    clock.hook = tap_during_motion
+    await director._roam()
+    assert wheels == [(18, 18)] * 2 + [(0, 0)]
+    assert director._event_mood(robot.state) == "Happy"
+    await robot.disconnect()
+
+
 async def test_freeplay_invites_cube_and_reacts_to_a_real_tap(monkeypatch):
     robot = SimulatorBackend()
     await robot.connect()
@@ -243,6 +273,45 @@ async def test_freeplay_invites_cube_and_reacts_to_a_real_tap(monkeypatch):
     assert any(color == "green" for _, color in lights)
     assert lights[-1][1] == "off"
     assert all(cube.light_color == "off" for cube in robot.state.cubes)
+    await robot.disconnect()
+
+
+async def test_freeplay_waits_for_cube_invitation_before_roaming(monkeypatch):
+    robot = SimulatorBackend()
+    await robot.connect()
+    await robot.enable_freeplay()
+    clock = VirtualClock()
+    moved_during_invitation = []
+    movement = []
+    invitations = []
+    original_drive = robot.drive
+    original_set_color = robot.set_cube_color
+
+    async def drive(left, right):
+        if left or right:
+            movement.append(clock.now)
+            if any(cube.light_color == "blue" for cube in robot.state.cubes):
+                moved_during_invitation.append(clock.now)
+        await original_drive(left, right)
+
+    async def color(number, value):
+        if value == "blue":
+            invitations.append(clock.now)
+        await original_set_color(number, value)
+
+    monkeypatch.setattr(robot, "drive", drive)
+    monkeypatch.setattr(robot, "set_cube_color", color)
+    director = PersonalityDirector(robot, rng=random.Random(4), clock=clock.time, pause=clock.pause)
+    director.rng.uniform = lambda low, high: low
+    task = asyncio.create_task(director.run(allow_movement=True))
+    async with asyncio.timeout(2):
+        while clock.now < 114:  # noqa: ASYNC110 - wait for the director's injected clock
+            await asyncio.sleep(0.001)
+    task.cancel()
+    await asyncio.gather(task, return_exceptions=True)
+    assert invitations and movement
+    assert movement[0] < invitations[0]
+    assert not moved_during_invitation
     await robot.disconnect()
 
 

@@ -5,6 +5,7 @@
 - Add spontaneous procedural moods, gaze, blinking, five synthesized vocalizations and
   tappable cube-light invitations.
 - React immediately to cube interactions and keep charging/hazard expressions stable.
+- Preempt Freeplay roaming for cube interactions and pause it during cube invitations.
 - Add an explicitly enabled slow floor-roaming mode; elevated surfaces keep wheels locked.
 - Expose raw cliff telemetry and pickup/fall/charger flags for supervised checks.
 - Add a motor-locked cliff sensor trace for physical calibration.

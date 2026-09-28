@@ -94,9 +94,16 @@ class PersonalityDirector:
         """A bounded floor-only move; each pulse renews the worker's short lease."""
         left, right = self.rng.choice(((18, 18), (8, 18), (18, 8), (-12, 12), (12, -12)))
         pulses = 10 if left * right >= 0 else 8
+        starting_events = tuple(
+            (cube.tap_sequence, cube.move_sequence) for cube in self.backend.state.cubes
+        )
         try:
             for _ in range(pulses):
-                if not safe_to_move(self.backend.state):
+                state = self.backend.state
+                current_events = tuple(
+                    (cube.tap_sequence, cube.move_sequence) for cube in state.cubes
+                )
+                if not safe_to_move(state) or current_events != starting_events:
                     return
                 await self.backend.drive(left, right)
                 await self.pause(0.08)
@@ -194,7 +201,7 @@ class PersonalityDirector:
                     if safe_to_move(state):
                         await self.backend.set_head_angle(self.rng.choice((-5, 5, 12)))
                     self.next_head = now + self.rng.uniform(7, 12)
-                if allow_movement and now >= self.next_roam:
+                if allow_movement and now >= self.next_roam and not self.invite_cube:
                     if safe_to_move(state):
                         await self._roam()
                     self.next_roam = now + self.rng.uniform(6, 12)

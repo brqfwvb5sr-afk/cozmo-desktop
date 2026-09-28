@@ -19,6 +19,8 @@ There is no face identification, navigation map or automatic docking.
 
 Default behavior is stationary. Short forward, arc and turn movements require a separate
 Freeplay movement checkbox plus a connected, motor-armed robot on a clear floor.
+Cube taps and movement interrupt a roaming pulse; active cube invitations pause
+roaming until the invitation is resolved or times out.
 Table/unknown surface selections lock wheels at the worker. Manual action, STOP,
 disconnect, focus loss and navigation cancel behavior. No claim of table-edge
 safety or physical validation is made.
