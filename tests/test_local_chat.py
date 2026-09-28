@@ -45,8 +45,9 @@ def test_local_request_is_loopback_bounded_and_speech_only(monkeypatch):
             {"message": {"content": '{"speech":"Hallo!","emotion":"Happy","action":"none"}'}}
         )
 
-    def build_opener(proxy):
+    def build_opener(proxy, redirects):
         assert proxy.proxies == {}
+        assert isinstance(redirects, local_chat._NoRedirect)
         return Opener(urlopen)
 
     monkeypatch.setattr(local_chat.urllib.request, "build_opener", build_opener)
@@ -70,7 +71,7 @@ def test_model_cannot_issue_actions_or_invalid_face(monkeypatch, payload):
     monkeypatch.setattr(
         local_chat.urllib.request,
         "build_opener",
-        lambda _proxy: Opener(lambda *_args, **_kwargs: Response(payload)),
+        lambda _proxy, _redirects: Opener(lambda *_args, **_kwargs: Response(payload)),
     )
     with pytest.raises(RobotError):
         local_chat._request("small:1b", (ChatTurn("user", "Hello"),))
@@ -80,10 +81,26 @@ def test_offline_error_is_user_facing_and_secret_free(monkeypatch):
     def fail(*_args, **_kwargs):
         raise urllib.error.URLError("private detail")
 
-    monkeypatch.setattr(local_chat.urllib.request, "build_opener", lambda _proxy: Opener(fail))
+    monkeypatch.setattr(
+        local_chat.urllib.request, "build_opener", lambda _proxy, _redirects: Opener(fail)
+    )
     with pytest.raises(RobotError, match="Start Ollama") as error:
         local_chat._request("small:1b", (ChatTurn("user", "Hello"),))
     assert "private detail" not in str(error.value)
+
+
+def test_local_chat_rejects_http_redirects():
+    import urllib.request
+
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), local_chat._NoRedirect())
+    request = urllib.request.Request(local_chat.OLLAMA_URL, b"private chat", method="POST")
+    handler = next(item for item in opener.handlers if isinstance(item, local_chat._NoRedirect))
+    assert (
+        handler.redirect_request(
+            request, None, 307, "Temporary Redirect", {}, "https://example.com/collect"
+        )
+        is None
+    )
 
 
 async def test_chat_reply_changes_eyes_and_speaks_but_never_drives(monkeypatch):

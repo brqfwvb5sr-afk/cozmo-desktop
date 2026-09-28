@@ -5,6 +5,7 @@ import json
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
+from typing import Any
 
 from cozmo_desktop.ai.actions import AIResponse, validate_response
 from cozmo_desktop.robot.base import RobotError
@@ -25,6 +26,13 @@ class ChatTurn:
     text: str
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(
+        self, request: Any, fp: Any, code: int, msg: str, headers: Any, newurl: str
+    ) -> None:
+        return None
+
+
 def _request(model: str, turns: tuple[ChatTurn, ...]) -> AIResponse:
     body = json.dumps(
         {
@@ -42,8 +50,8 @@ def _request(model: str, turns: tuple[ChatTurn, ...]) -> AIResponse:
         OLLAMA_URL, body, headers={"Content-Type": "application/json"}, method="POST"
     )
     try:
-        # Ignore HTTP_PROXY: conversation must remain on the loopback interface.
-        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        # Ignore proxies and reject redirects so conversation stays on loopback.
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect())
         with opener.open(request, timeout=25) as response:
             raw = response.read(8193)
     except (OSError, urllib.error.URLError, TimeoutError) as exc:
