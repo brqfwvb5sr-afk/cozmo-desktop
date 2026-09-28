@@ -53,7 +53,9 @@ def test_event_driven_mood_and_safety_gate():
     for flag in ("cliff_detected", "picked_up", "falling", "on_charger"):
         hazard = replace(moved, **{flag: True})
         assert not safe_to_move(hazard)
-        assert director._event_mood(hazard) == "Surprised"
+        assert director._event_mood(hazard) == ("Sleepy" if flag == "on_charger" else "Surprised")
+        assert director._event_mood(hazard) is None
+        assert director._event_mood(moved) == "Neutral"
     for mode in ("table", "unknown"):
         assert not safe_to_move(replace(state, surface_mode=mode))
 
@@ -114,6 +116,60 @@ async def test_table_mode_has_emotions_but_never_roams(monkeypatch):
     await asyncio.gather(task, return_exceptions=True)
     assert not wheels
     assert any("Expression" in event for event in robot.events)
+    await robot.disconnect()
+
+
+async def test_cube_tap_gets_an_immediate_happy_sound(monkeypatch):
+    robot = SimulatorBackend()
+    await robot.connect()
+    await robot.enable_freeplay()
+    clock = VirtualClock()
+    tapped = False
+
+    def tap_once():
+        nonlocal tapped
+        if not tapped:
+            robot._state = replace(
+                robot.state,
+                cubes=(replace(robot.state.cubes[0], tap_sequence=1), *robot.state.cubes[1:]),
+            )
+            tapped = True
+
+    clock.hook = tap_once
+    director = PersonalityDirector(robot, clock=clock.time, pause=clock.pause)
+    task = asyncio.create_task(director.run())
+    async with asyncio.timeout(2):
+        while clock.now < 101:  # noqa: ASYNC110 - wait for the director's injected clock
+            await asyncio.sleep(0.001)
+    task.cancel()
+    await asyncio.gather(task, return_exceptions=True)
+    assert tapped
+    assert "Simulated vocalization: happy" in robot.events
+    await robot.disconnect()
+
+
+async def test_sustained_hazard_does_not_flood_face_updates(monkeypatch):
+    robot = SimulatorBackend()
+    await robot.connect()
+    await robot.enable_freeplay()
+    robot._state = replace(robot.state, picked_up=True)
+    clock = VirtualClock()
+    faces = []
+    original_display = robot.display_face
+
+    async def display(frame, name="Custom"):
+        faces.append(name)
+        await original_display(frame, name)
+
+    monkeypatch.setattr(robot, "display_face", display)
+    director = PersonalityDirector(robot, clock=clock.time, pause=clock.pause)
+    task = asyncio.create_task(director.run())
+    async with asyncio.timeout(2):
+        while clock.now < 102:  # noqa: ASYNC110 - wait for the director's injected clock
+            await asyncio.sleep(0.001)
+    task.cancel()
+    await asyncio.gather(task, return_exceptions=True)
+    assert faces == ["Surprised"]
     await robot.disconnect()
 
 

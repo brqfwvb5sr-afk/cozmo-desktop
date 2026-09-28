@@ -43,9 +43,11 @@ class PersonalityDirector:
         self.last_taps = tuple(c.tap_sequence for c in backend.state.cubes)
         self.last_moves = tuple(c.move_sequence for c in backend.state.cubes)
         self.recent_taps: frozenset[int] = frozenset()
+        self.hazard_mood: str | None = None
         self.next_mood = 0.0
         self.next_blink = 0.0
         self.next_sound = 0.0
+        self.next_reaction_sound = 0.0
         self.next_head = 0.0
         self.next_roam = 0.0
         self.next_invite = 0.0
@@ -66,8 +68,20 @@ class PersonalityDirector:
         tapped = bool(self.recent_taps)
         moved = any(current > prior for current, prior in zip(moves, self.last_moves, strict=True))
         self.last_taps, self.last_moves = taps, moves
-        if any(getattr(state, flag) for flag in HAZARDS):
-            return "Surprised"
+        if state.cliff_detected or state.picked_up or state.falling:
+            hazard_mood = "Surprised"
+        elif state.on_charger:
+            hazard_mood = "Sleepy"
+        else:
+            hazard_mood = None
+        if hazard_mood is not None:
+            if self.hazard_mood != hazard_mood:
+                self.hazard_mood = hazard_mood
+                return hazard_mood
+            return None
+        if self.hazard_mood is not None:
+            self.hazard_mood = None
+            return "Neutral"
         if tapped:
             return "Happy"
         if moved:
@@ -107,6 +121,8 @@ class PersonalityDirector:
                 state = self.backend.state
                 now = self.clock()
                 event = self._event_mood(state)
+                hazardous = self.hazard_mood is not None
+                invitation_announced = False
                 if self.invite_cube:
                     cube_connected = state.cubes[self.invite_cube - 1].connected
                     hazardous = any(getattr(state, flag) for flag in HAZARDS)
@@ -132,8 +148,10 @@ class PersonalityDirector:
                         self.next_invite = now + self.rng.uniform(22, 36)
                         await self.backend.set_cube_color(self.invite_cube, "blue")
                         await self.backend.play_sound("question")
+                        invitation_announced = True
+                        self.next_sound = max(self.next_sound, now + 4)
                         event = "Curious"
-                if event or now >= self.next_mood:
+                if event or (not hazardous and now >= self.next_mood):
                     self.mood = event or self.rng.choice(
                         ("Neutral", "Curious", "Happy", "Sleepy", "Confused", "Angry")
                     )
@@ -142,6 +160,14 @@ class PersonalityDirector:
                         render_face(self.mood, gaze=self.gaze), self.mood
                     )
                     self.next_mood = now + self.rng.uniform(4, 9)
+                if (
+                    event in ("Happy", "Curious")
+                    and not invitation_announced
+                    and now >= self.next_reaction_sound
+                ):
+                    await self.backend.play_sound("happy" if event == "Happy" else "question")
+                    self.next_reaction_sound = now + 1
+                    self.next_sound = max(self.next_sound, now + 4)
                 if now >= self.next_blink:
                     await self.backend.display_face(
                         render_face(self.mood, gaze=self.gaze, blink=True), self.mood
@@ -151,7 +177,9 @@ class PersonalityDirector:
                         render_face(self.mood, gaze=self.gaze), self.mood
                     )
                     self.next_blink = now + self.rng.uniform(3, 7)
-                if now >= self.next_sound:
+                if now >= self.next_sound and not (
+                    state.cliff_detected or state.picked_up or state.falling
+                ):
                     sound = {
                         "Angry": "grumble",
                         "Happy": "happy",
