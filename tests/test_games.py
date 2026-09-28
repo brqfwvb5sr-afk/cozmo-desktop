@@ -6,7 +6,7 @@ from dataclasses import replace
 import pytest
 
 from cozmo_desktop.robot.base import CubeEvent, CubeState, RobotError, RobotState
-from cozmo_desktop.services.games import GameDirector
+from cozmo_desktop.services.games import COLORS, GameDirector
 
 
 class ScriptedRobot:
@@ -17,12 +17,16 @@ class ScriptedRobot:
         )
         self.lights = []
         self.sounds = []
+        self.faces = []
 
     async def set_cube_color(self, number, color):
         self.lights.append((number, color))
 
     async def play_sound(self, kind):
         self.sounds.append(kind)
+
+    async def display_face(self, frame, name="Custom"):
+        self.faces.append(name)
 
     def event(self, number, kind):
         cubes = list(self.state.cubes)
@@ -68,6 +72,7 @@ def director_for(robot, clock):
 async def test_quick_tap_five_real_taps_score_and_clear_lights():
     robot, clock = ScriptedRobot(), VirtualClock()
     game = director_for(robot, clock)
+    game.rng.choice = lambda choices: "green" if choices == COLORS else choices[0]
     last_round = [0]
 
     def tap_once():
@@ -79,8 +84,27 @@ async def test_quick_tap_five_real_taps_score_and_clear_lights():
     await game.run("Quick Tap")
     assert game.state.phase == "finished"
     assert (game.state.player_score, game.state.cozmo_score) == (5, 0)
-    assert robot.lights[0] == (1, "red") and robot.lights[-1] == (2, "off")
+    assert robot.lights[0] == (3, "blue") and robot.lights[-1] == (3, "off")
     assert len(robot.sounds) == 5
+    assert robot.faces == ["Sad"] * 5
+
+
+async def test_quick_tap_red_is_never_a_valid_target():
+    robot, clock = ScriptedRobot(), VirtualClock()
+    game = director_for(robot, clock)
+    last_round = [0]
+
+    def tap_red():
+        if game.state.phase == "watch" and game.state.round > last_round[0]:
+            last_round[0] = game.state.round
+            robot.event(1, "tap")
+
+    clock.hook = tap_red
+    await game.run("Quick Tap")
+    assert (game.state.player_score, game.state.cozmo_score) == (0, 5)
+    assert game.state.round == 5
+    assert robot.faces == ["Happy"] * 5
+    assert all(color == "off" for _, color in robot.lights[-3:])
 
 
 async def test_memory_match_increasing_sequence_and_wrong_or_missing_input():

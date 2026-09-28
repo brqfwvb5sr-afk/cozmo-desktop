@@ -39,6 +39,7 @@ application; its captures are attached to each successful Actions run.*
 - Optional text conversation through locally running Ollama, bounded to speech and
   eye expressions. No model is installed or contacted automatically.
 - Local settings and allowlisted diagnostic export; no cloud or microphone access.
+- Bounded motor-locked cliff-sensor trace for supervised table-edge measurements.
 
 ## Current status and connection support
 

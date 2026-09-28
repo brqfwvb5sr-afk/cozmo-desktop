@@ -10,6 +10,7 @@ import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
 
+from cozmo_desktop.face.expressions import render_face
 from cozmo_desktop.robot.base import RobotBackend, RobotError, RobotState
 
 GAME_NAMES = ("Quick Tap", "Memory Match", "Keepaway")
@@ -58,6 +59,12 @@ class GameDirector:
             cozmo_score=self.state.cozmo_score + int(not player),
         )
 
+    async def _award(self, *, player: bool) -> None:
+        self._score(player=player)
+        mood = "Sad" if player else "Happy"
+        await self.backend.display_face(render_face(mood), mood)
+        await self.backend.play_sound("grumble" if player else "chirp")
+
     async def _wait_for(self, number: int, sequence: int, seconds: float, *, tap: bool) -> bool:
         deadline = self.clock() + seconds
         while self.clock() < deadline:
@@ -70,10 +77,21 @@ class GameDirector:
         return False
 
     async def _quick_tap(self) -> None:
-        self._check(2)
-        for round_number in range(1, 6):
-            state = self._check(2)
-            self.state = replace(self.state, round=round_number, phase="watch")
+        self._check(3)
+        for round_number in range(1, 21):
+            self._check(3)
+            self.state = replace(
+                self.state,
+                round=round_number,
+                phase="countdown",
+                instruction="Watch Cube 3 countdown, then compare Cubes 1 and 2.",
+            )
+            for _ in range(3):
+                self._check(3)
+                await self.backend.set_cube_color(3, "blue")
+                await self.pause(0.2)
+                await self.backend.set_cube_color(3, "off")
+                await self.pause(0.15)
             player_color = self.rng.choice(COLORS)
             match = bool(self.rng.randrange(2))
             other_color = (
@@ -81,24 +99,29 @@ class GameDirector:
                 if match
                 else self.rng.choice(tuple(c for c in COLORS if c != player_color))
             )
-            first_tap = state.cubes[0].tap_sequence
             await self.backend.set_cube_color(1, player_color)
             await self.backend.set_cube_color(2, other_color)
+            first_tap = self._check(3).cubes[0].tap_sequence
             self.state = replace(
                 self.state,
-                instruction=("Tap Cube 1 when both colors match. Cozmo reacts after 1.5 seconds."),
+                phase="watch",
+                instruction=(
+                    "Tap Cube 1 if both colors match, but never tap red. "
+                    "Cozmo reacts after 1.5 seconds."
+                ),
             )
             tapped = await self._wait_for(1, first_tap, 1.5, tap=True)
-            if tapped == match:
+            valid_target = match and player_color != "red"
+            if tapped == valid_target:
                 if tapped:
-                    self._score(player=True)
-                    await self.backend.play_sound("chirp")
-            elif match or tapped:
-                self._score(player=False)
-                await self.backend.play_sound("grumble")
+                    await self._award(player=True)
+            elif valid_target or tapped:
+                await self._award(player=False)
             await self.backend.set_cube_color(1, "off")
             await self.backend.set_cube_color(2, "off")
             await self.pause(0.3)
+            if max(self.state.player_score, self.state.cozmo_score) >= 5:
+                break
 
     async def _memory_match(self) -> None:
         self._check(3)
@@ -141,8 +164,7 @@ class GameDirector:
                 if actual != expected:
                     correct = False
                     break
-            self._score(player=correct)
-            await self.backend.play_sound("chirp" if correct else "grumble")
+            await self._award(player=correct)
             if not correct:
                 self.state = replace(self.state, instruction="Wrong sequence or time expired.")
                 await self.pause(0.5)
@@ -165,14 +187,13 @@ class GameDirector:
             count = self.backend.state.cubes[0].move_sequence
             self.state = replace(self.state, phase="react", instruction="Pull it away now!")
             player = await self._wait_for(1, count, 1.4, tap=False)
-            self._score(player=player)
-            await self.backend.play_sound("chirp" if player else "grumble")
+            await self._award(player=player)
             await self.pause(0.35)
 
     async def run(self, name: str) -> None:
         if name not in GAME_NAMES:
             raise RobotError("Unknown Power Cube game.")
-        required = {"Quick Tap": 2, "Memory Match": 3, "Keepaway": 1}[name]
+        required = {"Quick Tap": 3, "Memory Match": 3, "Keepaway": 1}[name]
         self._check(required)
         self.state = GameState(name=name, phase="starting")
         try:

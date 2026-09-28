@@ -30,6 +30,7 @@ from cozmo_desktop.face.expressions import NAMES, Expression, apply_expression, 
 from cozmo_desktop.robot.base import RobotError
 from cozmo_desktop.robot.direct.backend import DirectBackend
 from cozmo_desktop.robot.simulator import SimulatorBackend
+from cozmo_desktop.services.cliff_trace import LABELS, MAX_SAMPLES, CliffTrace
 from cozmo_desktop.services.controller import RobotController
 from cozmo_desktop.services.diagnostics import export_report
 from cozmo_desktop.services.games import GAME_NAMES
@@ -67,6 +68,7 @@ class MainWindow(QMainWindow):
         self._mode_task: asyncio.Task[None] | None = None
         self._connection_task: asyncio.Task[None] | None = None
         self._was_connected = False
+        self.cliff_trace = CliffTrace()
         self.setWindowTitle("Cozmo Desktop · Simulation Mode")
         self.resize(1220, 840)
         self.setMinimumSize(1000, 760)
@@ -344,6 +346,30 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.arm_button)
         self.motor_status = label("Motor control is locked.", "notice", True)
         layout.addWidget(self.motor_status)
+        layout.addWidget(label("MOTOR-LOCKED CLIFF SENSOR TRACE", "eyebrow"))
+        layout.addWidget(
+            label(
+                "Observe Cozmo with wheels locked. Mark center or an edge while "
+                "supporting him by hand. This trace cannot certify safe table driving.",
+                "muted",
+                True,
+            )
+        )
+        self.trace_position = QComboBox()
+        self.trace_position.addItems(LABELS)
+        self.trace_position.setAccessibleName("Cliff trace position label")
+        self.trace_position.currentTextChanged.connect(self.set_trace_position)
+        layout.addWidget(self.trace_position)
+        trace_buttons = QHBoxLayout()
+        self.trace_toggle = QPushButton("Start sensor trace")
+        self.trace_toggle.clicked.connect(self.toggle_cliff_trace)
+        trace_buttons.addWidget(self.trace_toggle)
+        self.trace_export = QPushButton("Export trace…")
+        self.trace_export.clicked.connect(self.export_cliff_trace)
+        trace_buttons.addWidget(self.trace_export)
+        layout.addLayout(trace_buttons)
+        self.trace_status = label(self.cliff_trace.message, "muted", True)
+        layout.addWidget(self.trace_status)
         layout.addWidget(
             label(
                 "STOP cancels commands. Pickup, cliff/charger state or an expired drive command "
@@ -400,8 +426,8 @@ class MainWindow(QMainWindow):
         )
         layout.addWidget(
             label(
-                "Connect Cubes 1–3 on the Cubes page first. Quick Tap needs Cubes 1 and 2, "
-                "Memory Match needs all three, Keepaway needs Cube 1. Games keep wheels still.",
+                "Connect Cubes 1–3 on the Cubes page first. Quick Tap and Memory Match "
+                "need all three; Keepaway needs Cube 1. Games keep wheels still.",
                 "muted",
                 True,
             )
@@ -487,7 +513,7 @@ class MainWindow(QMainWindow):
 
     def start_game(self) -> None:
         name = self.game_choice.currentText()
-        required = {"Quick Tap": 2, "Memory Match": 3, "Keepaway": 1}[name]
+        required = {"Quick Tap": 3, "Memory Match": 3, "Keepaway": 1}[name]
         if not all(c.connected for c in self.controller.backend.state.cubes[:required]):
             self.controller.message = f"Connect Cubes 1–{required} before playing {name}."
             return
@@ -666,6 +692,34 @@ class MainWindow(QMainWindow):
         mode = ("unknown", "table", "floor")[index]
         self.controller.submit("surface", lambda: self.controller.backend.set_surface(mode))
 
+    def set_trace_position(self, value: str) -> None:
+        if value in LABELS:
+            self.cliff_trace.label = value
+
+    def toggle_cliff_trace(self) -> None:
+        if self.cliff_trace.active:
+            self.cliff_trace.stop()
+            return
+        try:
+            self.cliff_trace.start(self.controller.backend.state)
+            self.trace_position.setCurrentText("center")
+        except RobotError as exc:
+            self.cliff_trace.message = str(exc)
+
+    def export_cliff_trace(self) -> None:
+        if not self.cliff_trace.samples:
+            return
+        self.cliff_trace.stop()
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export motor-locked cliff trace", "cozmo-cliff-trace.json", "JSON (*.json)"
+        )
+        if path:
+            try:
+                self.cliff_trace.export(Path(path))
+                self.cliff_trace.message = "Sensor trace exported."
+            except OSError:
+                self.cliff_trace.message = "Could not export sensor trace. Choose another folder."
+
     def navigate(self, index: int) -> None:
         self.release_controls()
         self.stack.setCurrentIndex(index)
@@ -743,6 +797,7 @@ class MainWindow(QMainWindow):
         if self.controller.closing:
             return
         state = self.controller.backend.state
+        self.cliff_trace.observe(state)
         if (
             self._was_connected
             and not state.connected
@@ -841,6 +896,23 @@ class MainWindow(QMainWindow):
             and state.surface_mode == "floor"
             and not state.motors_enabled
             and not self.controller.latched
+        )
+        self.trace_toggle.setText(
+            "Stop sensor trace" if self.cliff_trace.active else "Start sensor trace"
+        )
+        self.trace_toggle.setEnabled(
+            self.cliff_trace.active
+            or (
+                state.connected
+                and not self.controller.backend.is_simulation
+                and not state.motors_enabled
+                and state.left_speed == 0
+                and state.right_speed == 0
+            )
+        )
+        self.trace_export.setEnabled(bool(self.cliff_trace.samples))
+        self.trace_status.setText(
+            f"{self.cliff_trace.message} Samples: {len(self.cliff_trace.samples)}/{MAX_SAMPLES}."
         )
         if self.controller.backend.is_simulation:
             self.cliff_status.setText("Synthetic mode: no physical cliff sensor.")

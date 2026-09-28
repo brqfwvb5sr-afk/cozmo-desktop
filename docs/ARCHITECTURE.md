@@ -20,6 +20,10 @@ Only the worker can send physical commands. Freeplay wheel nudges require explic
 floor selection and arming; the worker independently rejects table/unknown movement.
 Raw cliff sensor readings are diagnostic until supervised measurements establish
 their behavior. The robot's cliff-stop protocol setting remains enabled.
+An explicit motor-locked cliff trace keeps at most 300 in-memory samples. It stops
+when motor control is enabled and exports only relative time, four raw sensor
+values, wheel-speed readings, user-selected position labels and hazard flags.
+It never initiates motion.
 
 qasync integrates Qt and asyncio on one event loop. Immutable state snapshots keep
 presentation separate from backend mutation. Controller-owned tasks isolate errors,

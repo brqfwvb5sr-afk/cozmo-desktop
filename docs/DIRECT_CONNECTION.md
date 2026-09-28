@@ -55,6 +55,14 @@ Eine passende Route allein beweist keine Roboterverbindung.
 - Cozmo auf einen freien Boden setzen, **Connection → Clear floor** und danach
   **Enable motors** wählen. Der Zustand **Elevated/table** sperrt Fahrbefehle.
   Nicht auf einer Tischkante fahren oder Freeplay dort bewegen lassen.
+- **Tischsensor-Messung ohne Motoren:** Motoren gesperrt lassen. Auf **Connection**
+  **Start sensor trace** wählen und `center` markieren. Cozmo mit einer Hand sichern,
+  ihn auf der Oberfläche langsam zur Tischkante schieben und die passende Richtung
+  (`front edge` usw.) markieren. Danach **Stop sensor trace** und **Export trace** wählen. Niemals
+  für diese Messung Fahrmotoren freigeben oder Cozmo an einer Kante loslassen.
+  Die JSON-Datei enthält nur relative Zeit, vier Rohwerte, Positionsmarkierung,
+  Raddrehzahlen und Sicherheitsflags; keine Kamera, Sprache, WLAN-Daten oder Konten. Ohne Auswertung
+  echter Messungen bleibt Tischfahren gesperrt.
 - **Control**: WASD zum Fahren gedrückt halten, loslassen zum Stoppen; Pfeiltasten
   hoch/runter bewegen den Kopf, R/F den Lift. Anfangs 20 mm/s, maximal 40 mm/s.
 - **Speak**: lokales deutsches eSpeak NG über Cozmos Lautsprecher. Kein Mikrofon.
@@ -68,8 +76,11 @@ Eine passende Route allein beweist keine Roboterverbindung.
   und Ausrichtung sind nicht verfügbar.
 - **Home → Start Freeplay**: Augen, Blick, Stimmung und synthetisierte Laute laufen
   selbstständig. Die separate Bewegungsoption erfordert Clear floor und Enable motors.
-- **Games**: Quick Tap mit Würfel 1/2, Memory Match mit 1–3, Keepaway mit 1.
+- **Games**: Quick Tap und Memory Match mit Würfel 1–3, Keepaway mit Würfel 1.
   Eigenständig programmierte Spielregeln nutzen LEDs und Tap-/Bewegungsereignisse.
+  Bei Quick Tap zeigt Würfel 3 den Countdown: Würfel 1 nur bei gleichen Farben
+  antippen, niemals bei Rot. Cozmo reagiert über Augen und Laute, tippt aber
+  ohne verifizierte Würfelposition noch keinen Würfel körperlich an.
   Die proprietäre Original-App und ihre Spiel-Engine sind nicht enthalten. Keepaway
   verfolgt den Würfel nicht räumlich; die direkte Verbindung liefert dafür derzeit
   keine verlässlich geprüfte Würfelposition. Während Spielen bleiben die Räder still.
@@ -113,7 +124,7 @@ keine zugesicherte Stoppdistanz oder Stoppzeit.
 
 Pending: robot/firmware version, Ubuntu version, Wi-Fi adapter, connect/disconnect,
 camera/OLED, TTS, head/lift, supervised low-speed wheels, key/focus/STOP response,
-lost GUI/UDP/telemetry, pickup/cliff and raw cliff readings on several surfaces,
+lost GUI/UDP/telemetry, pickup/cliff and raw cliff traces on several surfaces,
 individual cube connect/tap/lights, Freeplay movement and game timing. Record
 observed results before describing this adapter as stable. No original app assets,
 OBB archives or firmware images are downloaded by the application.

@@ -22,6 +22,7 @@ and protection at table edges. This is the end state, not a simulator-only miles
    distances. Add regression tests for missing/stale/hazardous readings.
 4. **Games.** Build original-code gameplay for Quick Tap, Memory Match and
    Keepaway around connected Power Cube LEDs and timestamped tap/move events.
+   Quick Tap uses matching colors, a red no-tap rule and a third countdown cube.
    Use deterministic rule tests, game cancellation and UI score/state. Identify
    these as community recreations; the official app's graphics, engine, unlock
    state and proprietary content are not distributable here.
@@ -36,4 +37,6 @@ and protection at table edges. This is the end state, not a simulator-only miles
 
 Primary references: [PyCozmo cliff sensor and stop protocol](https://pycozmo.readthedocs.io/en/stable/external/functions.html),
 [official Cozmo play-space caution](https://support.anki.bot/article/236-where-to-play-with-cozmo),
-and [official introduction to Quick Tap, Keepaway, Memory Match](https://anki.bot/pages/life-with-cozmo-1).
+[official introduction to Quick Tap, Keepaway, Memory Match](https://anki.bot/pages/life-with-cozmo-1),
+and the [Apache-licensed SDK Quick Tap example](https://github.com/anki/cozmo-python-sdk/blob/master/examples/apps/quick_tap.py)
+for game-rule comparison. No example source code or animation assets are copied.

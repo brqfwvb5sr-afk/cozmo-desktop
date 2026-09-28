@@ -14,12 +14,15 @@ from cozmo_desktop.services.personality import PersonalityDirector, safe_to_move
 class VirtualClock:
     def __init__(self):
         self.now = 100.0
+        self.hook = None
 
     def time(self):
         return self.now
 
     async def pause(self, seconds):
         self.now += seconds
+        if self.hook is not None:
+            self.hook()
         await asyncio.sleep(0)
 
 
@@ -78,7 +81,8 @@ async def test_spontaneous_moods_blinks_sounds_and_floor_roaming(monkeypatch):
     await asyncio.gather(task, return_exceptions=True)
     assert len(frames) >= 4 and len(set(frames)) > 1
     assert any("vocalization" in event for event in robot.events)
-    assert (10, 10) in wheels and (0, 0) in wheels
+    assert any(left or right for left, right in wheels) and (0, 0) in wheels
+    assert max(abs(speed) for pair in wheels for speed in pair) <= 18
     assert not robot.state.freeplay
     await robot.disconnect()
 
@@ -104,6 +108,32 @@ async def test_table_mode_has_emotions_but_never_roams(monkeypatch):
     await asyncio.gather(task, return_exceptions=True)
     assert not wheels
     assert any("Expression" in event for event in robot.events)
+    await robot.disconnect()
+
+
+async def test_roam_halts_when_a_hazard_appears_mid_move(monkeypatch):
+    robot = SimulatorBackend()
+    await robot.connect()
+    await robot.enable_freeplay()
+    clock = VirtualClock()
+    wheels = []
+    original_drive = robot.drive
+
+    async def drive(left, right):
+        wheels.append((left, right))
+        await original_drive(left, right)
+
+    monkeypatch.setattr(robot, "drive", drive)
+    director = PersonalityDirector(robot, clock=clock.time, pause=clock.pause)
+    director.rng.choice = lambda choices: choices[0]
+
+    def detect_hazard():
+        if len(wheels) == 3:
+            robot._state = replace(robot.state, cliff_detected=True)
+
+    clock.hook = detect_hazard
+    await director._roam()
+    assert wheels == [(18, 18)] * 3 + [(0, 0)]
     await robot.disconnect()
 
 

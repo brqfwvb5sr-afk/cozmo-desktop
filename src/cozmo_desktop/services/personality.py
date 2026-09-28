@@ -10,7 +10,7 @@ import time
 from collections.abc import Awaitable, Callable
 
 from cozmo_desktop.face.expressions import render_face
-from cozmo_desktop.robot.base import RobotBackend, RobotState
+from cozmo_desktop.robot.base import RobotBackend, RobotError, RobotState
 
 HAZARDS = ("cliff_detected", "picked_up", "falling", "on_charger")
 
@@ -65,15 +65,22 @@ class PersonalityDirector:
         return None
 
     async def _roam(self) -> None:
-        """A bounded floor-only nudge, renewed below the worker's drive lease."""
-        for _ in range(4):
-            if not safe_to_move(self.backend.state):
-                if self.backend.state.connected and self.backend.state.motors_enabled:
+        """A bounded floor-only move; each pulse renews the worker's short lease."""
+        left, right = self.rng.choice(((18, 18), (8, 18), (18, 8), (-12, 12), (12, -12)))
+        pulses = 10 if left * right >= 0 else 8
+        try:
+            for _ in range(pulses):
+                if not safe_to_move(self.backend.state):
+                    return
+                await self.backend.drive(left, right)
+                await self.pause(0.08)
+        finally:
+            state = self.backend.state
+            if state.connected and state.motors_enabled and state.surface_mode == "floor":
+                try:
                     await self.backend.drive(0, 0)
-                return
-            await self.backend.drive(10, 10)
-            await self.pause(0.08)
-        await self.backend.drive(0, 0)
+                except RobotError:
+                    pass  # The independent worker also locks/halts on sensor faults.
 
     async def run(self, *, allow_movement: bool = False) -> None:
         now = self.clock()
@@ -81,7 +88,7 @@ class PersonalityDirector:
         self.next_blink = now + 3
         self.next_sound = now + 5
         self.next_head = now + 4
-        self.next_roam = now + 12
+        self.next_roam = now + 4
         try:
             while self.backend.state.connected and self.backend.state.freeplay:
                 state = self.backend.state
@@ -115,7 +122,7 @@ class PersonalityDirector:
                 if allow_movement and now >= self.next_roam:
                     if safe_to_move(state):
                         await self._roam()
-                    self.next_roam = now + self.rng.uniform(16, 28)
+                    self.next_roam = now + self.rng.uniform(6, 12)
                 await self.pause(0.1)
         finally:
             await self.backend.disable_freeplay()

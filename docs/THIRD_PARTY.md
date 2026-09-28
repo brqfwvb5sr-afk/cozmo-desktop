@@ -66,6 +66,11 @@ Optional local conversation calls the user-installed
 installed by this project or required to start the application. No code/assets are
 copied from Ollama.
 
+The [Anki SDK Quick Tap example](https://github.com/anki/cozmo-python-sdk/blob/master/examples/apps/quick_tap.py)
+was consulted for the matching-color, red-trap and third-cube countdown rules.
+No example source code, animation triggers or assets were copied; game behavior
+here is independently implemented against the direct cube event interface.
+
 GitHub Actions uses checkout, setup-python and upload-artifact from
 [actions](https://github.com/actions), under MIT. Ubuntu system packages retain
 their distribution copyright notices. For each binary build consult its generated

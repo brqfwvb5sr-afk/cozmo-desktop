@@ -131,7 +131,7 @@ class RobotController:
             await asyncio.gather(self._freeplay_task, return_exceptions=True)
         await self.backend.stop()
         director = GameDirector(self.backend)
-        director._check({"Quick Tap": 2, "Memory Match": 3, "Keepaway": 1}[name])
+        director._check({"Quick Tap": 3, "Memory Match": 3, "Keepaway": 1}[name])
         self._game_director = director
         self._game_task = asyncio.create_task(director.run(name))
         self._game_task.add_done_callback(self._game_finished)

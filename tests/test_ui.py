@@ -1,4 +1,5 @@
 import asyncio
+import json
 from dataclasses import replace
 from unittest.mock import AsyncMock
 
@@ -254,3 +255,28 @@ async def test_conversation_page_sends_local_reply_and_speaks(window, monkeypatc
     assert window.chat_transcript.item(1).text() == "Cozmo: Hallo!"
     assert window.controller.backend.state.speech == "Hallo!"
     assert window.controller.backend.state.expression == "Happy"
+
+
+async def test_stationary_cliff_trace_ui_labels_and_exports(window, monkeypatch, tmp_path):
+    window.backend_choice.setCurrentIndex(1)
+    await window._mode_task
+    backend = window.controller.backend
+    backend._state = replace(backend.state, connected=True, cliff_raw=(10, 20, 30, 40))
+    window.refresh()
+    assert window.trace_toggle.isEnabled()
+    window.trace_toggle.click()
+    window.refresh()
+    window.trace_position.setCurrentText("front edge")
+    backend._state = replace(backend.state, cliff_raw=(100, 20, 30, 40))
+    window.refresh()
+    path = tmp_path / "trace.json"
+    monkeypatch.setattr(
+        "cozmo_desktop.ui.window.QFileDialog.getSaveFileName",
+        lambda *_args: (str(path), "JSON"),
+    )
+    window.trace_export.click()
+    data = json.loads(path.read_text())
+    assert data["sample_count"] == 2
+    assert data["samples"][-1]["label"] == "front edge"
+    assert data["samples"][-1]["raw"] == [100, 20, 30, 40]
+    assert not window.cliff_trace.active
