@@ -66,7 +66,7 @@ jobs:
         run: bash scripts/build-deb.sh
       - name: Install and launch the package
         run: |
-          sudo apt-get install -y ./dist/cozmo-desktop_0.2.0_amd64.deb
+          sudo apt-get install -y ./dist/cozmo-desktop_0.3.0_amd64.deb
           cozmo-desktop --config-dir /tmp/cozmo-package --smoke-test build/package-screenshots
           xvfb-run -a env QT_QPA_PLATFORM=xcb cozmo-desktop --config-dir /tmp/cozmo-x11 --smoke-test build/x11-screenshots
           dpkg-query -W cozmo-desktop
