@@ -8,6 +8,7 @@
 - Preempt Freeplay roaming for cube interactions and pause it during cube invitations.
 - Add an explicitly enabled slow floor-roaming mode; elevated surfaces keep wheels locked.
 - Expose raw cliff telemetry and pickup/fall/charger flags for supervised checks.
+- Include privacy-limited Ubuntu route and adapter details in the direct connection check.
 - Add a motor-locked cliff sensor trace for physical calibration.
 - Add a channel-by-channel diagnostic comparison to exported cliff traces without unlocking table driving.
 - Add original-code Quick Tap, Memory Match and Keepaway rule recreations with cube LEDs.

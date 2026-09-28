@@ -44,7 +44,8 @@ bash scripts/start-ubuntu.sh
 ```
 
 Der Prüfbefehl kontrolliert Abhängigkeit und Route ohne Roboterbefehle zu senden.
-Eine passende Route allein beweist keine Roboterverbindung.
+Er zeigt die tatsächlich gewählte Route und den Gerätetyp an, ohne WLAN-Namen oder
+Passwörter auszugeben. Eine passende Route allein beweist keine Roboterverbindung.
 
 ## Erstes Verbinden und Bedienen
 

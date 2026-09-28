@@ -1,6 +1,7 @@
 """Physical adapter contracts with real PyCozmo codecs, never a robot socket send."""
 
 import asyncio
+import importlib
 import io
 import math
 import shutil
@@ -282,3 +283,23 @@ def test_cli_rejects_unattended_physical_smoke_test(monkeypatch):
     with pytest.raises(SystemExit) as error:
         main()
     assert error.value.code == 2
+
+
+def test_cli_direct_diagnostics_show_route_and_device_type_without_wifi_name(monkeypatch, capsys):
+    app_main = importlib.import_module("cozmo_desktop.app.main")
+    monkeypatch.setattr(app_main.sys, "platform", "linux")
+    commands = []
+
+    def run(command, **kwargs):
+        commands.append(command)
+        assert kwargs == {"capture_output": True, "text": True, "timeout": 3, "check": True}
+        if command[0] == "ip":
+            return SimpleNamespace(stdout="172.31.1.1 dev wlx123 src 172.31.1.2\n")
+        return SimpleNamespace(stdout="wlx123:wifi:connected\nens33:ethernet:connected\n")
+
+    monkeypatch.setattr(app_main.subprocess, "run", run)
+    app_main.print_linux_network_status()
+    output = capsys.readouterr().out
+    assert "dev wlx123 src 172.31.1.2" in output
+    assert "wlx123:wifi:connected" in output
+    assert commands[1] == ["nmcli", "-t", "-f", "DEVICE,TYPE,STATE", "device", "status"]

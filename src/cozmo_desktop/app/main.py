@@ -3,6 +3,7 @@ import asyncio
 import importlib.util
 import logging
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -16,6 +17,22 @@ from cozmo_desktop.services.controller import RobotController
 from cozmo_desktop.services.diagnostics import configure_logging
 from cozmo_desktop.storage.settings import Settings, config_directory
 from cozmo_desktop.ui.window import MainWindow
+
+
+def print_linux_network_status() -> None:
+    """Show route and device type without SSIDs, passwords, or a robot packet."""
+    if sys.platform != "linux":
+        return
+    for title, command in (
+        ("Route to Cozmo", ["ip", "route", "get", "172.31.1.1"]),
+        ("Network devices", ["nmcli", "-t", "-f", "DEVICE,TYPE,STATE", "device", "status"]),
+    ):
+        try:
+            result = subprocess.run(command, capture_output=True, text=True, timeout=3, check=True)
+        except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            print(f"{title}: unavailable; check Ubuntu network tools and USB-Wi-Fi passthrough.")
+        else:
+            print(f"{title}:\n{result.stdout.strip()[:4096]}")
 
 
 async def smoke_test(window: MainWindow, destination: Path) -> None:
@@ -69,6 +86,7 @@ def main() -> int:
     if args.smoke_test and args.backend == "direct":
         parser.error("--smoke-test is simulator-only; it must never drive a physical robot")
     if args.check_direct:
+        print_linux_network_status()
         if importlib.util.find_spec("pycozmo") is None:
             print("Missing PyCozmo. Install this project with the [direct] extra.")
             return 1
