@@ -158,7 +158,7 @@ async def test_sustained_hazard_does_not_flood_face_updates(monkeypatch):
     original_display = robot.display_face
 
     async def display(frame, name="Custom"):
-        faces.append(name)
+        faces.append((name, frame.tobytes()))
         await original_display(frame, name)
 
     monkeypatch.setattr(robot, "display_face", display)
@@ -169,7 +169,12 @@ async def test_sustained_hazard_does_not_flood_face_updates(monkeypatch):
             await asyncio.sleep(0.001)
     task.cancel()
     await asyncio.gather(task, return_exceptions=True)
-    assert faces == ["Surprised"]
+    normal = render_face("Surprised", gaze=director.gaze).tobytes()
+    blink = render_face("Surprised", gaze=director.gaze, blink=True).tobytes()
+    assert faces[0] == ("Surprised", normal)
+    # Stable hazard mood may still blink; only alternating blink/restoration is allowed.
+    for index, frame in enumerate(faces[1:]):
+        assert frame == ("Surprised", blink if index % 2 == 0 else normal)
     await robot.disconnect()
 
 
