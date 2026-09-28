@@ -8,7 +8,15 @@ from dataclasses import replace
 
 from PIL import Image, ImageDraw
 
-from .base import Animation, CubeState, NotConnectedError, RobotBackend, RobotError, RobotState
+from .base import (
+    Animation,
+    CubeEvent,
+    CubeState,
+    NotConnectedError,
+    RobotBackend,
+    RobotError,
+    RobotState,
+)
 
 MAX_SPEED = 80.0
 DRIVE_LEASE = 0.35
@@ -22,7 +30,7 @@ def bounded(value: float, low: float, high: float) -> float:
 
 class SimulatorBackend(RobotBackend):
     def __init__(self) -> None:
-        self._state = RobotState()
+        self._state = RobotState(surface_mode="floor")
         self._ticker: asyncio.Task[None] | None = None
         self._drive_until = 0.0
         self._elapsed = 0.0
@@ -84,7 +92,6 @@ class SimulatorBackend(RobotBackend):
             self._state,
             left_speed=bounded(left, -MAX_SPEED, MAX_SPEED),
             right_speed=bounded(right, -MAX_SPEED, MAX_SPEED),
-            freeplay=False,
         )
         self._drive_until = time.monotonic() + DRIVE_LEASE
 
@@ -113,6 +120,28 @@ class SimulatorBackend(RobotBackend):
             raise RobotError("Enter between 1 and 500 characters.")
         self._state = replace(self._state, speech=text.strip())
         self._event("Simulated speech event (no audio output)")
+
+    async def play_sound(self, kind: str) -> None:
+        self._require_connection()
+        if kind not in ("chirp", "grumble"):
+            raise RobotError("Unknown robot vocalization.")
+        self._event(f"Simulated vocalization: {kind}")
+
+    async def cube_lights(self, number: int) -> None:
+        await self.set_cube_color(number, "green")
+
+    async def set_cube_color(self, number: int, color: str) -> None:
+        self._require_connection()
+        if number not in (1, 2, 3) or color not in ("off", "red", "green", "blue"):
+            raise RobotError("Invalid cube light command.")
+        self._state = replace(
+            self._state,
+            cubes=tuple(
+                replace(cube, light_color=color) if cube.number == number else cube
+                for cube in self._state.cubes
+            ),
+        )
+        self._event(f"Cube {number} light: {color}")
 
     async def play_animation(self, animation: str) -> None:
         self._require_connection()
@@ -185,11 +214,22 @@ class SimulatorBackend(RobotBackend):
                 c,
                 tapped=(int(self._elapsed) % 9 == c.number),
                 moved=(int(self._elapsed) % 13 == c.number),
+                tap_sequence=c.tap_sequence
+                + int(not c.tapped and int(self._elapsed) % 9 == c.number),
+                move_sequence=c.move_sequence
+                + int(not c.moved and int(self._elapsed) % 13 == c.number),
             )
             for c in state.cubes
         )
         if face != state.face_detected:
             self._event("Synthetic face appeared" if face else "Synthetic face left")
+        events = list(state.cube_events)
+        for old, new in zip(state.cubes, cubes, strict=True):
+            for kind, field in (("tap", "tap_sequence"), ("move", "move_sequence")):
+                if getattr(new, field) > getattr(old, field):
+                    events.append(
+                        CubeEvent(events[-1].ordinal + 1 if events else 1, new.number, kind)
+                    )
         self._state = replace(
             state,
             x=state.x + speed * math.cos(heading) * dt,
@@ -198,7 +238,7 @@ class SimulatorBackend(RobotBackend):
             battery=max(0.0, (state.battery or 0) - dt * 0.003),
             face_detected=face,
             cubes=cubes,
-            expression=("Curious" if face else "Sleepy") if state.freeplay else state.expression,
+            cube_events=tuple(events[-32:]),
         )
 
     async def _run(self) -> None:

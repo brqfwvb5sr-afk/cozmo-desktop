@@ -1,16 +1,16 @@
 # Personality direction
 
-First milestone: stationary simulated idle expressions. Enabling the Home action
-sets `freeplay=True`; synthetic face presence selects Curious versus Sleepy.
-Drive, STOP, disconnect or navigation cancels it. This is not original Freeplay,
-face tracking, autonomous exploration or a complete personality engine.
+Version 0.3.0 adds a controller-owned personality director. It changes original
+procedural eyes, blinks, shifts gaze and makes original short synthesized sounds.
+Cube tap/movement events, hazard flags and battery voltage influence the mood.
+The director runs in both simulator and experimental direct Wi-Fi mode.
 
-Next milestone: an event-driven state machine for idle, curious, happy, excited,
-bored, sleepy, confused, surprised, annoyed, playful, exploring and social.
-Use face/cube observations, elapsed idle time, low battery and conversation events.
-Keep transitions deterministic in tests and inject randomness/clock when needed.
+Random and clock inputs are injected in tests. These behaviors are original-code
+recreations, not the official Freeplay engine or proprietary animations/sounds.
+There is no face identification, navigation map or automatic docking.
 
-All actions must use RobotController. Default behavior must remain stationary;
-future autonomous driving requires explicit user enablement, clear status and a
-backend capability gate. Stop/disconnect cancels every pending behavior. A low
-battery should suggest charging, never pretend to implement docking.
+Default behavior is stationary. Slow straight wheel nudges require a separate
+Freeplay movement checkbox plus a connected, motor-armed robot on a clear floor.
+Table/unknown surface selections lock wheels at the worker. Manual action, STOP,
+disconnect, focus loss and navigation cancel behavior. No claim of table-edge
+safety or physical validation is made.

@@ -25,12 +25,20 @@ Prove c64 SDK compatibility with modern Python, add a real adapter, ADB discover
 connection wizard states, disconnection tests and capability discovery. Record
 hardware results. Do not substitute the simulator on a hardware connection failure.
 
+## Implemented 0.3.0: personality, game recreations and local text chat
+
+- Original procedural mood, gaze, blinking and synthesized vocalizations.
+- Explicitly enabled slow floor roaming; table/unknown modes keep wheels locked.
+- Raw cliff telemetry and real status flags exposed for supervised observation.
+- Quick Tap, Memory Match and Keepaway community rule recreations using cube events.
+- Optional local Ollama text conversation limited to eyes and speech.
+- Real robot behavior, table-edge safety and cube-game timing remain unverified.
+
 ## Experience and intelligence
 
-Add real animation enumeration, cube controls, face tracking, activities and a
-separate personality engine. Introduce optional STT and API/local AI services,
-conversation state and a deterministic voice-command router. Keep weather/music
-optional. No docking/return-to-charger claim without an implemented capability.
+Add real animation enumeration, face tracking and activities. Introduce optional
+STT, richer local/API providers and a deterministic voice-command router. Keep
+weather/music optional. No docking/return-to-charger claim without a capability.
 
 ## Direct connection and distribution
 

@@ -12,7 +12,7 @@ Build on Ubuntu 24.04:
 ```bash
 sudo apt install python3-venv python3-pip python3-build
 bash scripts/build-deb.sh
-sudo apt install ./dist/cozmo-desktop_0.2.0_amd64.deb
+sudo apt install ./dist/cozmo-desktop_0.3.0_amd64.deb
 cozmo-desktop
 ```
 

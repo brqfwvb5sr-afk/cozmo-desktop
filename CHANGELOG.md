@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.0 — 2026-09-28
+
+- Add spontaneous procedural moods, gaze, blinking and synthesized vocalizations.
+- Add an explicitly enabled slow floor-roaming mode; elevated surfaces keep wheels locked.
+- Expose raw cliff telemetry and pickup/fall/charger flags for supervised checks.
+- Add original-code Quick Tap, Memory Match and Keepaway rule recreations with cube LEDs.
+- Add optional local Ollama text conversation with bounded speech and emotion output.
+- Extend tests for cube event ordering, safety gates, personality and conversation.
+- Physical robot, table-edge stopping and game timing validation remain pending.
+
 ## 0.2.0 — 2026-09-27
 
 - Add opt-in experimental physical Wi-Fi adapter using PyCozmo 0.8.0.

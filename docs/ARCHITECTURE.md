@@ -15,6 +15,11 @@ Speech is synthesized off the Qt loop by an optional local eSpeak NG executable,
 using stdin and fixed arguments. The worker validates WAV format/size, stops motors
 before audio encoding, then sends PyCozmo audio packets. No microphone or cloud is used.
 OLED eyes are original procedural images; no upstream resource downloader is called.
+The personality director and cube-game director are cancellable controller tasks.
+Only the worker can send physical commands. Freeplay wheel nudges require explicit
+floor selection and arming; the worker independently rejects table/unknown movement.
+Raw cliff sensor readings are diagnostic until supervised measurements establish
+their behavior. The robot's cliff-stop protocol setting remains enabled.
 
 qasync integrates Qt and asyncio on one event loop. Immutable state snapshots keep
 presentation separate from backend mutation. Controller-owned tasks isolate errors,
@@ -33,6 +38,8 @@ environment, speech content, profile names or raw exceptions. Logs contain opera
 and exception type, not user text or secret-bearing provider responses.
 
 Expression and sequence services operate on the controller, never on raw hardware.
-AI response validation is a pure allowlist boundary; no provider or network service
-is enabled in this milestone. Planned modules are documented rather than exposed
-as pretend-working screens. See ROADMAP.md.
+Optional local chat uses a bounded POST to Ollama at `127.0.0.1`; it runs in a thread
+and only after Send. The strict response validator permits bounded speech and known
+emotions. The conversation path refuses every model-requested action. Conversation
+history stays in memory and is cleared when switching backend; it is not logged or
+exported. No microphone or cloud service is used. See ROADMAP.md.

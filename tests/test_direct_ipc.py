@@ -81,6 +81,7 @@ async def test_spawn_connect_drive_expiry_and_reconnect(backend):
     await asyncio.gather(backend.connect(), backend.connect())
     assert backend.state.connected and not backend.state.motors_enabled
     assert backend.state.battery is None
+    await backend.set_surface("floor")
     await backend.arm_motors()
     await backend.drive(200, -200)
     await until(lambda: backend.state.left_speed == 40)
@@ -96,6 +97,7 @@ async def test_spawn_connect_drive_expiry_and_reconnect(backend):
 
 async def test_missing_gui_heartbeat_shuts_down_worker(backend):
     await backend.connect()
+    await backend.set_surface("floor")
     await backend.arm_motors()
     backend._heartbeat.cancel()
     await asyncio.gather(backend._heartbeat, return_exceptions=True)

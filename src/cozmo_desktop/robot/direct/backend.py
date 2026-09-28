@@ -3,6 +3,7 @@
 import asyncio
 import importlib.util
 import io
+import math
 import multiprocessing
 import shutil
 import socket
@@ -10,6 +11,7 @@ import subprocess
 import tempfile
 import threading
 import time
+import wave
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -60,6 +62,34 @@ def synthesize(text: str) -> bytes:
         if len(data) > 1_400_000:
             raise RobotError("Speech is limited to approximately 30 seconds. Use shorter text.")
         return data
+
+
+def synthesize_vocalization(kind: str) -> bytes:
+    """Generate a short original robot-like chirp; no audio assets or eSpeak needed."""
+    if kind not in ("chirp", "grumble"):
+        raise RobotError("Unknown robot vocalization.")
+    import array
+
+    rate = 22050
+    count = int(rate * 0.32)
+    pcm = array.array("h")
+    for sample in range(count):
+        progress = sample / count
+        envelope = min(1.0, progress * 18, (1 - progress) * 20)
+        frequency = (
+            550 + 430 * progress
+            if kind == "chirp"
+            else 180 + 35 * math.sin(2 * math.pi * progress * 6)
+        )
+        value = int(11000 * envelope * math.sin(2 * math.pi * frequency * sample / rate))
+        pcm.append(value)
+    output = io.BytesIO()
+    with wave.open(output, "wb") as audio:
+        audio.setnchannels(1)
+        audio.setsampwidth(2)
+        audio.setframerate(rate)
+        audio.writeframes(pcm.tobytes())
+    return output.getvalue()
 
 
 class DirectBackend(RobotBackend):
@@ -286,6 +316,12 @@ class DirectBackend(RobotBackend):
         self._require()
         await self._send("arm")
 
+    async def set_surface(self, mode: str) -> None:
+        self._require()
+        if mode not in ("unknown", "table", "floor"):
+            raise RobotError("Unknown play surface.")
+        await self._send("surface", mode=mode)
+
     async def drive(self, left: float, right: float) -> None:
         self._require()
         await self._send("drive", left=left, right=right)
@@ -320,6 +356,12 @@ class DirectBackend(RobotBackend):
         await self._send("audio", data=audio)
         self._state = replace(self._state, speech=text.strip())
 
+    async def play_sound(self, kind: str) -> None:
+        self._require()
+        data = await asyncio.to_thread(synthesize_vocalization, kind)
+        self._require()
+        await self._send("audio", data=data)
+
     async def get_camera_frame(self) -> Image.Image:
         self._require()
         if not self._state.camera_available or self._camera is None:
@@ -349,16 +391,6 @@ class DirectBackend(RobotBackend):
         self._require()
         await self.stop()
         self._state = replace(self._state, freeplay=True)
-        self._idle = asyncio.create_task(self._idle_eyes())
-
-    async def _idle_eyes(self) -> None:
-        try:
-            while self._state.connected:
-                for name in ("Neutral", "Curious", "Happy", "Sleepy"):
-                    await self.display_face(render_face(name), name)
-                    await asyncio.sleep(3)
-        except RobotError:
-            self._state = replace(self._state, freeplay=False)
 
     async def disable_freeplay(self) -> None:
         if self._idle is not None:
@@ -370,3 +402,9 @@ class DirectBackend(RobotBackend):
     async def cube_lights(self, number: int) -> None:
         self._require()
         await self._send("cube", number=number)
+
+    async def set_cube_color(self, number: int, color: str) -> None:
+        self._require()
+        if color not in ("off", "red", "green", "blue"):
+            raise RobotError("Unknown cube light color.")
+        await self._send("cube_color", number=number, color=color)

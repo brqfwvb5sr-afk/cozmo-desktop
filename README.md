@@ -1,11 +1,11 @@
 # Cozmo Desktop
 
 A native, open-source desktop companion for Anki Cozmo, built for Ubuntu with
-Python and Qt. A place for controls, expressions, camera and, eventually, personality
-and conversation — with a hardware-independent architecture from the start.
+Python and Qt. It brings controls, expressions, camera, personality, cube games and
+optional local text conversation together behind a hardware-independent interface.
 
-**Version 0.2.0 adds opt-in experimental direct Wi-Fi control of a physical Cozmo.**
-It is implemented and tested without hardware, but **not yet validated on a real robot**.
+**Version 0.3.0 includes opt-in experimental direct Wi-Fi control of a physical Cozmo.**
+It has automated tests, but **has not yet been validated on a real robot**.
 Simulation remains the default; no phone or API key is needed.
 
 **Ubuntu / VMware / USB-WLAN: [Einrichtung für deinen echten Cozmo](docs/DIRECT_CONNECTION.md).**
@@ -19,7 +19,7 @@ application; its captures are attached to each successful Actions run.*
 ## Features
 
 - Native dark desktop workspace with Home, Control, Expressions, Animations,
-  Camera, Connection, Cubes and Settings.
+  Camera, Connection, Cubes, Games, Conversation and Settings.
 - Connect/disconnect a simulated Cozmo; inspect battery, pose, wheels, head, lift,
   synthetic face/cube state and camera readiness.
 - Hold graphical controls or WASD to drive. Head arrows and R/F lift controls.
@@ -29,8 +29,15 @@ application; its captures are attached to each successful Actions run.*
 - Nine original procedural expressions, four synthetic animations, search,
   favorites and local sequence save/load.
 - Direct mode: local eSpeak NG speech through Cozmo’s speaker; simulator: text events.
-- Direct mode: real grayscale camera, OLED faces and cube connect/green LEDs/tap events.
+- Direct mode: real grayscale camera, OLED faces and cube connection, colored LEDs,
+  tap and movement events.
 - Simulator: synthetic camera with test overlays. Both modes support PNG snapshots.
+- Cancellable personality with moods, blinking, gaze and original vocalizations;
+  slow floor roaming requires explicit opt-in and motor arming. Table mode locks wheels.
+- Original-code Quick Tap, Memory Match and Keepaway rule recreations using cube events.
+  These do not contain the original mobile game's engine or assets.
+- Optional text conversation through locally running Ollama, bounded to speech and
+  eye expressions. No model is installed or contacted automatically.
 - Local settings and allowlisted diagnostic export; no cloud or microphone access.
 
 ## Current status and connection support
@@ -80,7 +87,7 @@ Download a successful build's `ubuntu-24.04-amd64-deb` artifact from
 then run:
 
 ```bash
-sudo apt install ./cozmo-desktop_0.2.0_amd64.deb
+sudo apt install ./cozmo-desktop_0.3.0_amd64.deb
 ```
 
 This adds Cozmo Desktop to the application menu. These are development artifacts,
@@ -108,22 +115,27 @@ pages or deactivating the window stops movement. The simulator independently sto
 unrenewed wheel commands after 350 ms, checked every 50 ms. This is software simulation,
 not a claim of a tested physical safety mechanism.
 
-Home's idle-expression mode changes only the eyes; it is **not** the original
-Freeplay engine. No docking, autonomous driving, face identification or cube games
-are implemented. Simulated cube tap/movement and face detection events support tests;
-the Cubes page additionally exposes real connection, tap/movement events and green LEDs
-in direct mode. Cube battery and orientation remain unknown.
+Home's Freeplay is an original personality service, not the original mobile app's
+Freeplay engine. Its eyes and sounds can run while stationary. Slow self-directed
+movement is available only after choosing **Clear floor**, enabling motors and
+checking the separate movement option. Table mode does not permit wheel movement:
+the cliff sensor has not been physically validated for edge safety. No docking or
+face identification is implemented. Cube battery and orientation remain unknown.
 
 ## AI configuration and Cozmo.AI integration
 
-No AI provider is enabled in 0.2.0. The application starts without any API key.
-A strict, tested structured-response validator establishes the future action
-allowlist; it does not make network calls or execute model instructions.
+The app starts without any AI provider or API key. On the Conversation page, enter
+the name of a model already installed in local [Ollama](https://ollama.com/download/linux)
+and type a message. The app sends that message to `127.0.0.1:11434` only when you
+press Send. The model's bounded structured reply changes Cozmo's eyes and is spoken
+through his speaker in direct mode. It cannot request movement or arbitrary actions.
+Use `ollama list` in Ubuntu to see installed model names. The simulator shows speech
+as text. Microphone input is not implemented.
 
 Cozmo.AI was inspected before implementation. Its concepts informed the roadmap,
 but no application code/assets were copied and its `main.py` is not launched.
-Selenium chatbot scraping will be replaced by optional API/local providers and
-separate STT services. See [integration status](docs/COZMO_AI_INTEGRATION.md).
+Selenium chatbot scraping is replaced here by optional local Ollama conversation;
+separate STT remains future work. See [integration status](docs/COZMO_AI_INTEGRATION.md).
 
 Future OpenAI support will read `OPENAI_API_KEY` from the environment or a secure
 credential store. Do not paste keys into tracked settings or commit `.env` files.
@@ -153,19 +165,16 @@ QT_QPA_PLATFORM=offscreen python -m cozmo_desktop \
 
 See [architecture](docs/ARCHITECTURE.md), [development](docs/DEVELOPMENT.md),
 [AGENTS.md](AGENTS.md) and [contributing](CONTRIBUTING.md). Tests require no robot.
-Version 0.2.0 local validation: Python 3.12/Windows, 90 passing tests (the eSpeak NG
-test is reserved for Linux CI), Ruff, mypy and native Qt smoke test. Tests include real
-PyCozmo packet encoding and a spawned worker with fake hardware. Physical validation
-is pending. Ubuntu 22.04/Python 3.11 and Ubuntu 24.04/Python 3.12 passed the initial
-CI suite and Qt smoke tests; the Ubuntu 24.04 `.deb` built, installed and launched.
-Each subsequent commit reruns validation. See the repository Actions page for results
-on the exact revision you download, including the installed package's X11 launch check.
+Version 0.3.0 adds tests for the new personality, games and conversation paths. The
+Windows unit/Qt suite, type checks and source build are run before publication;
+see [GitHub Actions](https://github.com/brqfwvb5sr-afk/cozmo-desktop/actions) for
+the Ubuntu results on the exact revision you download. Physical validation is pending.
 
 ## Roadmap
 
 1. Hardware-validate the experimental direct adapter and record actual firmware results.
-2. Add animation discovery, cube controls, face tracking and cancellable personality states.
-3. Add optional speech recognition, provider-based conversation and safe voice commands.
+2. Supervised floor/edge measurements and cube-game timing on a physical Cozmo.
+3. Add optional speech recognition, richer activities and safe voice commands.
 4. Evaluate an optional modern SDK/phone bridge without proprietary assets.
 5. Expand Ubuntu targets, AppImage packaging and release reproducibility.
 
@@ -182,7 +191,7 @@ The detailed [roadmap](docs/ROADMAP.md) distinguishes existing features from pla
 - **Invalid settings:** the app keeps the original file, reports the issue and uses
   safe defaults. Correct it or save new settings explicitly.
 - **No voice/audio:** simulator speech is text-only; direct TTS requires `espeak-ng`.
-  Speech recognition and AI conversation are not implemented.
+  Local conversation requires a running Ollama service and an installed model.
 - **Snapshots fail:** choose a writable folder in Settings.
 - **Windows offscreen screenshots have boxes instead of fonts:** use native Qt rendering.
 

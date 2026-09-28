@@ -1,10 +1,15 @@
+from __future__ import annotations
+
 import json
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from PIL import Image, ImageDraw
 
 from cozmo_desktop.robot.base import RobotError
-from cozmo_desktop.services.controller import RobotController
+
+if TYPE_CHECKING:
+    from cozmo_desktop.services.controller import RobotController
 
 NAMES = (
     "Neutral",
@@ -26,7 +31,7 @@ class Expression:
     lift: float = 0
 
     @classmethod
-    def from_json(cls, text: str) -> "Expression":
+    def from_json(cls, text: str) -> Expression:
         data = json.loads(text)
         if not isinstance(data, dict) or set(data) - {"name", "head_angle", "lift"}:
             raise ValueError("Unsupported expression fields.")
@@ -40,12 +45,18 @@ class Expression:
         return cls(data["name"], head, lift)
 
 
-def render_face(name: str) -> Image.Image:
+def render_face(name: str, *, gaze: int = 0, blink: bool = False) -> Image.Image:
     if name not in NAMES:
         raise RobotError("Unknown expression.")
+    if gaze < -8 or gaze > 8:
+        raise RobotError("Eye movement must stay within the display.")
     image = Image.new("RGB", (128, 64), "#10252d")
     draw = ImageDraw.Draw(image)
     for x in (22, 76):
+        x += gaze
+        if blink:
+            draw.line((x, 32, x + 28, 32), fill="#5ceac6", width=3)
+            continue
         height = 8 if name == "Sleepy" else 26
         y = 20 if name != "Curious" or x == 22 else 12
         if name == "Happy":

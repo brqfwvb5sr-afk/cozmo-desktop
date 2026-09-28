@@ -1,0 +1,121 @@
+"""Original, event-driven companion behavior owned by RobotController.
+
+Only the direct transport process can send hardware packets. This service never
+uses upstream animation assets and never grants itself motor permissions.
+"""
+
+import asyncio
+import random
+import time
+from collections.abc import Awaitable, Callable
+
+from cozmo_desktop.face.expressions import render_face
+from cozmo_desktop.robot.base import RobotBackend, RobotState
+
+HAZARDS = ("cliff_detected", "picked_up", "falling", "on_charger")
+
+
+def safe_to_move(state: RobotState) -> bool:
+    return (
+        state.connected
+        and state.freeplay
+        and state.motors_enabled
+        and state.surface_mode == "floor"
+        and not any(getattr(state, flag) for flag in HAZARDS)
+    )
+
+
+class PersonalityDirector:
+    def __init__(
+        self,
+        backend: RobotBackend,
+        *,
+        rng: random.Random | None = None,
+        clock: Callable[[], float] = time.monotonic,
+        pause: Callable[[float], Awaitable[None]] = asyncio.sleep,
+    ) -> None:
+        self.backend = backend
+        self.rng = rng or random.Random()
+        self.clock = clock
+        self.pause = pause
+        self.mood = "Neutral"
+        self.gaze = 0
+        self.last_taps = tuple(c.tap_sequence for c in backend.state.cubes)
+        self.last_moves = tuple(c.move_sequence for c in backend.state.cubes)
+        self.next_mood = 0.0
+        self.next_blink = 0.0
+        self.next_sound = 0.0
+        self.next_head = 0.0
+        self.next_roam = 0.0
+
+    def _event_mood(self, state: RobotState) -> str | None:
+        taps = tuple(c.tap_sequence for c in state.cubes)
+        moves = tuple(c.move_sequence for c in state.cubes)
+        tapped = any(current > prior for current, prior in zip(taps, self.last_taps, strict=True))
+        moved = any(current > prior for current, prior in zip(moves, self.last_moves, strict=True))
+        self.last_taps, self.last_moves = taps, moves
+        if any(getattr(state, flag) for flag in HAZARDS):
+            return "Surprised"
+        if tapped:
+            return "Happy"
+        if moved:
+            return "Curious"
+        if state.battery_voltage is not None and state.battery_voltage < 3.5:
+            return "Sleepy"
+        return None
+
+    async def _roam(self) -> None:
+        """A bounded floor-only nudge, renewed below the worker's drive lease."""
+        for _ in range(4):
+            if not safe_to_move(self.backend.state):
+                if self.backend.state.connected and self.backend.state.motors_enabled:
+                    await self.backend.drive(0, 0)
+                return
+            await self.backend.drive(10, 10)
+            await self.pause(0.08)
+        await self.backend.drive(0, 0)
+
+    async def run(self, *, allow_movement: bool = False) -> None:
+        now = self.clock()
+        self.next_mood = now
+        self.next_blink = now + 3
+        self.next_sound = now + 5
+        self.next_head = now + 4
+        self.next_roam = now + 12
+        try:
+            while self.backend.state.connected and self.backend.state.freeplay:
+                state = self.backend.state
+                now = self.clock()
+                event = self._event_mood(state)
+                if event or now >= self.next_mood:
+                    self.mood = event or self.rng.choice(
+                        ("Neutral", "Curious", "Happy", "Sleepy", "Confused", "Angry")
+                    )
+                    self.gaze = self.rng.choice((-5, 0, 5))
+                    await self.backend.display_face(
+                        render_face(self.mood, gaze=self.gaze), self.mood
+                    )
+                    self.next_mood = now + self.rng.uniform(4, 9)
+                if now >= self.next_blink:
+                    await self.backend.display_face(
+                        render_face(self.mood, gaze=self.gaze, blink=True), self.mood
+                    )
+                    await self.pause(0.12)
+                    await self.backend.display_face(
+                        render_face(self.mood, gaze=self.gaze), self.mood
+                    )
+                    self.next_blink = now + self.rng.uniform(3, 7)
+                if now >= self.next_sound:
+                    await self.backend.play_sound("grumble" if self.mood == "Angry" else "chirp")
+                    self.next_sound = now + self.rng.uniform(12, 22)
+                if now >= self.next_head:
+                    if safe_to_move(state):
+                        await self.backend.set_head_angle(self.rng.choice((-5, 5, 12)))
+                    self.next_head = now + self.rng.uniform(7, 12)
+                if allow_movement and now >= self.next_roam:
+                    if safe_to_move(state):
+                        await self._roam()
+                    self.next_roam = now + self.rng.uniform(16, 28)
+                await self.pause(0.1)
+        finally:
+            await self.backend.disable_freeplay()

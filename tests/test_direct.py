@@ -12,9 +12,9 @@ from unittest.mock import Mock
 import pytest
 from PIL import Image
 
-from cozmo_desktop.robot.base import RobotError, RobotState
+from cozmo_desktop.robot.base import CubeEvent, RobotError, RobotState
 from cozmo_desktop.robot.direct import backend as endpoint
-from cozmo_desktop.robot.direct.backend import DirectBackend, synthesize
+from cozmo_desktop.robot.direct.backend import DirectBackend, synthesize, synthesize_vocalization
 from cozmo_desktop.robot.direct.transport import PyCozmoTransport
 from cozmo_desktop.robot.direct.worker import WorkerSession
 
@@ -23,6 +23,7 @@ from cozmo_desktop.robot.direct.worker import WorkerSession
 def session():
     driver = Mock(last_state=10.0, hazard=False)
     session = WorkerSession(driver, 10)
+    session.surface = "floor"
     session.tick(10)
     return session
 
@@ -89,6 +90,20 @@ def test_expired_commands_and_hazardous_arming_rejected(session):
         command(session, "arm")
 
 
+def test_table_and_unknown_surface_reject_motor_commands(session):
+    command(session, "surface", mode="table")
+    assert session.surface == "table" and not session.guard.armed
+    with pytest.raises(RobotError, match="clear-floor"):
+        command(session, "arm")
+    with pytest.raises(RobotError, match="locked"):
+        command(session, "drive", left=10, right=10)
+    command(session, "surface", mode="floor")
+    command(session, "arm")
+    assert session.guard.armed
+    command(session, "surface", mode="unknown")
+    assert not session.guard.armed
+
+
 @pytest.fixture
 def transport():
     pytest.importorskip("pycozmo")
@@ -138,12 +153,25 @@ def test_real_sdk_telemetry_has_no_simulated_battery_or_camera(transport):
     cli.robot_status = transport.api.robot.RobotStatusFlag.IS_PICKED_UP
     cli.connected_objects[7] = {"object_type": 2, "factory_id": 42}
     transport._on_tap(cli, SimpleNamespace(object_id=7))
+    transport._on_tap(cli, SimpleNamespace(object_id=7))
+    transport._on_move(cli, SimpleNamespace(object_id=7))
+    transport._on_raw_state(
+        cli,
+        transport.api.protocol_encoder.RobotState(cliff_data_raw=(3, 4, 5, 6)),
+    )
     transport._on_state(cli)
     state = transport.snapshot()
     assert state.connected and state.battery is None and state.battery_voltage == 3.91
     assert state.head_angle == pytest.approx(12) and transport.hazard
     assert not state.face_detected and not state.camera_available
     assert state.cubes[1].connected and state.cubes[1].tapped
+    assert state.cubes[1].tap_sequence == 2 and state.cubes[1].move_sequence == 1
+    assert state.cube_events == (
+        CubeEvent(1, 2, "tap"),
+        CubeEvent(2, 2, "tap"),
+        CubeEvent(3, 2, "move"),
+    )
+    assert state.cliff_raw == (3, 4, 5, 6) and state.picked_up
     transport._on_camera(cli, Image.new("L", (320, 240)))
     transport._on_state(cli)
     assert transport.snapshot().camera_available
@@ -164,6 +192,26 @@ def test_real_cube_connect_and_lights_packets(transport):
     packets = [c.args[0] for c in cli.conn.send.call_args_list[-2:]]
     assert [type(p).__name__ for p in packets] == ["CubeId", "CubeLights"]
     assert all(p.to_bytes() for p in packets)
+    transport.cube_lights(1, "red")
+    assert transport._cube_colors[1] == "red"
+    assert transport.client.conn.send.call_args.args[0].to_bytes()
+
+
+def test_original_vocalization_is_small_pcm_and_real_sdk_audio(transport):
+    for kind in ("chirp", "grumble"):
+        data = synthesize_vocalization(kind)
+        assert len(data) < 25_000
+        with wave.open(io.BytesIO(data)) as stream:
+            assert (stream.getframerate(), stream.getnchannels(), stream.getsampwidth()) == (
+                22050,
+                1,
+                2,
+            )
+        transport.audio(data)
+        packet, _, _ = transport.client.anim_controller.queue.get()
+        assert packet.to_bytes()
+    with pytest.raises(RobotError):
+        synthesize_vocalization("copyrighted-file.wav")
 
 
 @pytest.mark.skipif(not shutil.which("espeak-ng"), reason="eSpeak NG tested in Ubuntu CI")

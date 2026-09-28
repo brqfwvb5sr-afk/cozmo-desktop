@@ -22,6 +22,16 @@ class CubeState:
     tapped: bool = False
     moved: bool = False
     orientation: str = "unknown"
+    tap_sequence: int = 0
+    move_sequence: int = 0
+    light_color: str = "off"
+
+
+@dataclass(frozen=True)
+class CubeEvent:
+    ordinal: int
+    number: int
+    kind: str
 
 
 @dataclass(frozen=True)
@@ -32,6 +42,12 @@ class RobotState:
     backend_name: str = "simulator"
     motors_enabled: bool = True
     safety_status: str = ""
+    surface_mode: str = "unknown"
+    cliff_detected: bool = False
+    picked_up: bool = False
+    falling: bool = False
+    on_charger: bool = False
+    cliff_raw: tuple[int, ...] | None = None
     charging: bool = False
     head_angle: float = 0.0
     lift_height: float = 0.0
@@ -49,6 +65,7 @@ class RobotState:
     cubes: tuple[CubeState, ...] = field(
         default_factory=lambda: tuple(CubeState(n) for n in range(1, 4))
     )
+    cube_events: tuple[CubeEvent, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -75,6 +92,15 @@ class RobotBackend(ABC):
 
     async def cube_lights(self, number: int) -> None:
         raise RobotError("Cube light control is unavailable in this backend.")
+
+    async def set_cube_color(self, number: int, color: str) -> None:
+        raise RobotError("Cube game lights are unavailable in this backend.")
+
+    async def set_surface(self, mode: str) -> None:
+        raise RobotError("Surface mode is unavailable in this backend.")
+
+    async def play_sound(self, kind: str) -> None:
+        raise RobotError("Robot vocalizations are unavailable in this backend.")
 
     @property
     @abstractmethod

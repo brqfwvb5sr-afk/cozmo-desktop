@@ -12,7 +12,7 @@ from typing import Any
 
 from PIL import Image
 
-from cozmo_desktop.robot.base import CubeState, RobotError, RobotState
+from cozmo_desktop.robot.base import CubeEvent, CubeState, RobotError, RobotState
 
 
 class PyCozmoTransport:
@@ -30,12 +30,19 @@ class PyCozmoTransport:
         self._state = RobotState(battery=None, backend_name="direct", motors_enabled=False)
         self._taps: dict[int, float] = {}
         self._moved: dict[int, float] = {}
+        self._tap_sequences: dict[int, int] = {}
+        self._move_sequences: dict[int, int] = {}
+        self._cliff_raw: tuple[int, ...] | None = None
+        self._cube_colors: dict[int, str] = {}
+        self._cube_events: list[CubeEvent] = []
+        self._event_ordinal = 0
         self.started = False
 
     def start(self) -> None:
         api, cli = self.api, self.client
         cli.add_handler(api.event.EvtRobotReady, self._ready)
         cli.add_handler(api.event.EvtRobotStateUpdated, self._on_state)
+        cli.add_handler(api.protocol_encoder.RobotState, self._on_raw_state)
         cli.add_handler(api.event.EvtNewRawCameraImage, self._on_camera)
         cli.add_handler(api.protocol_encoder.ObjectTapped, self._on_tap)
         cli.add_handler(api.protocol_encoder.ObjectMoved, self._on_move)
@@ -56,10 +63,34 @@ class PyCozmoTransport:
             self.last_camera = time.monotonic()
 
     def _on_tap(self, cli: Any, packet: Any) -> None:
-        self._taps[packet.object_id] = time.monotonic()
+        with self.lock:
+            self._taps[packet.object_id] = time.monotonic()
+            self._tap_sequences[packet.object_id] = self._tap_sequences.get(packet.object_id, 0) + 1
+            self._record_cube_event(cli, packet.object_id, "tap")
 
     def _on_move(self, cli: Any, packet: Any) -> None:
-        self._moved[packet.object_id] = time.monotonic()
+        with self.lock:
+            self._moved[packet.object_id] = time.monotonic()
+            self._move_sequences[packet.object_id] = (
+                self._move_sequences.get(packet.object_id, 0) + 1
+            )
+            self._record_cube_event(cli, packet.object_id, "move")
+
+    def _record_cube_event(self, cli: Any, object_id: int, kind: str) -> None:
+        connected = cli.connected_objects.get(object_id)
+        if connected is None:
+            return
+        number = int(connected["object_type"])
+        if number not in (1, 2, 3):
+            return
+        self._event_ordinal += 1
+        self._cube_events.append(CubeEvent(self._event_ordinal, number, kind))
+        del self._cube_events[:-32]
+
+    def _on_raw_state(self, cli: Any, packet: Any) -> None:
+        with self.lock:
+            raw = tuple(packet.cliff_data_raw)
+            self._cliff_raw = raw if len(raw) == 4 else None
 
     def _on_state(self, cli: Any) -> None:
         flags = self.api.robot.RobotStatusFlag
@@ -68,26 +99,44 @@ class PyCozmoTransport:
             cli.robot_status
             & (flags.IS_PICKED_UP | flags.IS_FALLING | flags.CLIFF_DETECTED | flags.IS_ON_CHARGER)
         )
-        cubes = []
+        cube_ids = []
         objects = dict(cli.connected_objects)
         for number in range(1, 4):
             object_id = next(
                 (key for key, value in objects.items() if int(value["object_type"]) == number), -1
             )
-            cubes.append(
-                CubeState(
-                    number,
-                    connected=object_id != -1,
-                    tapped=now - self._taps.get(object_id, -10.0) < 1,
-                    moved=now - self._moved.get(object_id, -10.0) < 1,
-                )
+            cube_ids.append((number, object_id))
+        with self.lock:
+            tap_times = dict(self._taps)
+            move_times = dict(self._moved)
+            tap_sequences = dict(self._tap_sequences)
+            move_sequences = dict(self._move_sequences)
+            cliff_raw = self._cliff_raw
+            cube_events = tuple(self._cube_events)
+            cube_colors = dict(self._cube_colors)
+        cubes = tuple(
+            CubeState(
+                number,
+                connected=object_id != -1,
+                tapped=now - tap_times.get(object_id, -10.0) < 1,
+                moved=now - move_times.get(object_id, -10.0) < 1,
+                tap_sequence=tap_sequences.get(object_id, 0),
+                move_sequence=move_sequences.get(object_id, 0),
+                light_color=cube_colors.get(number, "off"),
             )
+            for number, object_id in cube_ids
+        )
         state = RobotState(
             connected=self.ready,
             battery=None,
             battery_voltage=float(cli.battery_voltage),
             backend_name="direct",
             motors_enabled=False,
+            cliff_detected=bool(cli.robot_status & flags.CLIFF_DETECTED),
+            picked_up=bool(cli.robot_status & flags.IS_PICKED_UP),
+            falling=bool(cli.robot_status & flags.IS_FALLING),
+            on_charger=bool(cli.robot_status & flags.IS_ON_CHARGER),
+            cliff_raw=cliff_raw,
             charging=bool(cli.robot_status & flags.IS_CHARGING),
             head_angle=math.degrees(cli.head_angle.radians),
             lift_height=cli.lift_position.ratio,
@@ -97,7 +146,8 @@ class PyCozmoTransport:
             y=cli.pose.position.y,
             heading=cli.pose.rotation.angle_z.radians,
             camera_available=now - self.last_camera < 2,
-            cubes=tuple(cubes),
+            cubes=cubes,
+            cube_events=cube_events,
         )
         with self.lock:
             self._state = state
@@ -120,6 +170,10 @@ class PyCozmoTransport:
     def stop(self) -> None:
         if self.started:
             self.client.cancel_anim()
+            self.client.stop_all_motors()
+
+    def stop_motors(self) -> None:
+        if self.started:
             self.client.stop_all_motors()
 
     def drive(self, left: float, right: float) -> None:
@@ -154,7 +208,9 @@ class PyCozmoTransport:
         self.client.set_volume(30000)  # Explicit moderate volume; do not inherit a muted session.
         self.client.anim_controller.play_audio(packets)
 
-    def cube_lights(self, number: int) -> None:
+    def cube_lights(self, number: int, color: str = "green") -> None:
+        if color not in ("off", "red", "green", "blue"):
+            raise RobotError("Unknown cube light color.")
         cli, api = self.client, self.api
         object_id = next(
             (
@@ -178,8 +234,10 @@ class PyCozmoTransport:
             cli.conn.send(api.protocol_encoder.ObjectConnect(factory_id=factory_id, connect=True))
             return
         cli.conn.send(api.protocol_encoder.CubeId(object_id=object_id))
-        light = api.lights.green_light
+        light = getattr(api.lights, f"{color}_light")
         cli.conn.send(api.protocol_encoder.CubeLights(states=(light, light, light, light)))
+        with self.lock:
+            self._cube_colors[number] = color
 
     def close(self) -> None:
         if not self.started:

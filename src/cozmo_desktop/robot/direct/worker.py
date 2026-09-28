@@ -31,6 +31,7 @@ class WorkerSession:
         self.generation = 0
         self.closing = False
         self.expression = "Neutral"
+        self.surface = "unknown"
 
     def stop(self, *, lock: bool = False) -> None:
         self.driver.stop()
@@ -71,7 +72,20 @@ class WorkerSession:
         self.guard.last_gui = now
         if command == "heartbeat":
             return
-        if command == "arm":
+        if command == "surface":
+            surface = message.get("mode")
+            if surface not in ("unknown", "table", "floor"):
+                raise RobotError("Unknown play surface.")
+            self.stop(lock=True)
+            self.surface = surface
+            self.guard.reason = (
+                "Surface set to floor. Enable motors after checking the play area."
+                if surface == "floor"
+                else "Wheel control locked on an unverified or elevated surface."
+            )
+        elif command == "arm":
+            if self.surface != "floor":
+                raise RobotError("Wheel control requires the clear-floor surface setting.")
             self.guard.arm(now)
         elif command in {"drive", "head", "lift"}:
             self.guard.require_motion(now)
@@ -94,13 +108,21 @@ class WorkerSession:
             data = message.get("data")
             if not isinstance(data, bytes) or len(data) > 1_400_000:
                 raise RobotError("Invalid speech audio.")
-            self.stop()
+            self.driver.stop_motors()
+            self.guard.wheel_deadline = None
             self.driver.audio(data)
         elif command == "cube":
             cube = message.get("number")
             if type(cube) is not int or cube not in (1, 2, 3):
                 raise RobotError("Unknown cube.")
             self.driver.cube_lights(cube)
+        elif command == "cube_color":
+            cube, color = message.get("number"), message.get("color")
+            if type(cube) is not int or cube not in (1, 2, 3):
+                raise RobotError("Unknown cube.")
+            if color not in ("off", "red", "green", "blue"):
+                raise RobotError("Unknown cube light color.")
+            self.driver.cube_lights(cube, color)
         else:
             raise RobotError("Unsupported robot command.")
 
@@ -171,6 +193,7 @@ def run_worker(pipe: Connection) -> None:
                     motors_enabled=session.guard.armed,
                     safety_status=session.guard.reason,
                     expression=session.expression,
+                    surface_mode=session.surface,
                 )
                 emit({"state": state})
                 published = now

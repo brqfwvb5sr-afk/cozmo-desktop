@@ -14,13 +14,13 @@ mkdir -p build dist
 stage="$(mktemp -d "$PWD/build/deb.XXXXXX")"
 /usr/bin/python3 -m build
 /usr/bin/python3 -m venv "$stage/opt/cozmo-desktop/venv"
-"$stage/opt/cozmo-desktop/venv/bin/python" -m pip install 'dist/cozmo_desktop-0.2.0-py3-none-any.whl[direct]'
+"$stage/opt/cozmo-desktop/venv/bin/python" -m pip install 'dist/cozmo_desktop-0.3.0-py3-none-any.whl[direct]'
 "$stage/opt/cozmo-desktop/venv/bin/python" -m pip list --format=json > dist/runtime-dependencies.json
 mkdir -p "$stage/DEBIAN" "$stage/usr/bin" "$stage/usr/share/applications"
 mkdir -p "$stage/usr/share/icons/hicolor/scalable/apps" "$stage/usr/share/doc/cozmo-desktop"
 cat > "$stage/DEBIAN/control" <<'EOF'
 Package: cozmo-desktop
-Version: 0.2.0
+Version: 0.3.0
 Section: education
 Priority: optional
 Architecture: amd64
@@ -43,5 +43,5 @@ cp LICENSE "$stage/usr/share/doc/cozmo-desktop/copyright"
 cp docs/THIRD_PARTY.md docs/PACKAGING.md "$stage/usr/share/doc/cozmo-desktop/"
 cp -r docs/licenses "$stage/usr/share/doc/cozmo-desktop/"
 cp dist/runtime-dependencies.json "$stage/usr/share/doc/cozmo-desktop/"
-dpkg-deb --root-owner-group -Zgzip --build "$stage" dist/cozmo-desktop_0.2.0_amd64.deb
-echo 'Package built. Install with: sudo apt install ./dist/cozmo-desktop_0.2.0_amd64.deb'
+dpkg-deb --root-owner-group -Zgzip --build "$stage" dist/cozmo-desktop_0.3.0_amd64.deb
+echo 'Package built. Install with: sudo apt install ./dist/cozmo-desktop_0.3.0_amd64.deb'

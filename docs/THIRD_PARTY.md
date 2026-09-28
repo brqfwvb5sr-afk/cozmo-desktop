@@ -60,6 +60,12 @@ interpreter installed by uv retains its distribution notices.
 | [Pygments](https://github.com/pygments/pygments), [colorama](https://github.com/tartley/colorama) | BSD-2-Clause; BSD-3-Clause respectively | Test output formatting |
 | [pathspec](https://github.com/cpburnz/python-pathspec) | MPL-2.0 | Mypy path matching |
 
+Optional local conversation calls the user-installed
+[Ollama HTTP API](https://github.com/ollama/ollama/blob/main/docs/api.md) over
+`127.0.0.1` using Python's standard library. Ollama and its models are not bundled,
+installed by this project or required to start the application. No code/assets are
+copied from Ollama.
+
 GitHub Actions uses checkout, setup-python and upload-artifact from
 [actions](https://github.com/actions), under MIT. Ubuntu system packages retain
 their distribution copyright notices. For each binary build consult its generated

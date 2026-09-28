@@ -8,6 +8,7 @@ from PySide6.QtGui import QCloseEvent, QKeyEvent
 from PySide6.QtWidgets import (
     QAbstractSpinBox,
     QApplication,
+    QCheckBox,
     QComboBox,
     QFileDialog,
     QFrame,
@@ -31,6 +32,7 @@ from cozmo_desktop.robot.direct.backend import DirectBackend
 from cozmo_desktop.robot.simulator import SimulatorBackend
 from cozmo_desktop.services.controller import RobotController
 from cozmo_desktop.services.diagnostics import export_report
+from cozmo_desktop.services.games import GAME_NAMES
 from cozmo_desktop.storage.settings import Settings
 
 from .animations import AnimationsPage
@@ -47,6 +49,8 @@ PAGES = (
     "Connection",
     "Settings",
     "Cubes",
+    "Games",
+    "Conversation",
 )
 KEYS: dict[int, str] = {Qt.Key.Key_W: "w", Qt.Key.Key_A: "a", Qt.Key.Key_S: "s", Qt.Key.Key_D: "d"}
 
@@ -129,6 +133,8 @@ class MainWindow(QMainWindow):
             self.connection_page(),
             self.settings_page(),
             self.cubes_page(),
+            self.games_page(),
+            self.conversation_page(),
         ):
             scroll = QScrollArea()
             scroll.setWidgetResizable(True)
@@ -192,13 +198,15 @@ class MainWindow(QMainWindow):
         activity_layout = activity.layout()
         assert isinstance(activity_layout, QVBoxLayout)
         self.home_detail = label(
-            "Camera offline · AI not configured · Autonomous driving off", "muted", True
+            "Camera offline · Local chat optional · Autonomous driving off", "muted", True
         )
         activity_layout.addWidget(self.home_detail)
         row = QHBoxLayout()
-        self.freeplay = QPushButton("Start idle expressions")
+        self.freeplay = QPushButton("Start Freeplay")
         self.freeplay.clicked.connect(self.toggle_idle)
         row.addWidget(self.freeplay)
+        self.freeplay_movement = QCheckBox("Self-directed movement on a clear floor")
+        self.freeplay_movement.setAccessibleName("Allow supervised floor roaming")
         explore = QPushButton("Browse expressions")
         explore.clicked.connect(lambda: self.navigation.setCurrentRow(2))
         row.addWidget(explore)
@@ -206,6 +214,13 @@ class MainWindow(QMainWindow):
         camera.clicked.connect(lambda: self.navigation.setCurrentRow(4))
         row.addWidget(camera)
         activity_layout.addLayout(row)
+        activity_layout.addWidget(self.freeplay_movement)
+        games = QPushButton("Play cube games")
+        games.clicked.connect(lambda: self.navigation.setCurrentRow(8))
+        activity_layout.addWidget(games)
+        conversation = QPushButton("Talk with Cozmo")
+        conversation.clicked.connect(lambda: self.navigation.setCurrentRow(9))
+        activity_layout.addWidget(conversation)
         layout.addWidget(activity)
         layout.addStretch()
         return page
@@ -295,13 +310,32 @@ class MainWindow(QMainWindow):
                 "3. Put Cozmo on his charger; raise/lower the lift to display the Wi-Fi key.\n"
                 "4. In Ubuntu Wi-Fi settings, join Cozmo_XXXXXX using that key.\n"
                 "5. Close the mobile Cozmo app. Select Direct Wi-Fi here, then Connect Cozmo.\n"
-                "6. Confirm live camera/state. Put Cozmo on a clear floor, then Enable motors.\n\n"
+                "6. Check live state. Put Cozmo on a clear floor, choose Clear floor, "
+                "then Enable motors.\n\n"
                 "No phone is needed. Ubuntu should receive a 172.31.1.x address. "
                 "Do not drive on a desk. Cozmo may calibrate during protocol initialization.",
                 "muted",
                 True,
             )
         )
+        layout.addWidget(label("PLAY SURFACE", "eyebrow"))
+        self.surface_choice = QComboBox()
+        self.surface_choice.addItems(
+            ["Unselected — wheels locked", "Elevated/table — wheels locked", "Clear floor"]
+        )
+        self.surface_choice.setAccessibleName("Physical play surface")
+        self.surface_choice.currentIndexChanged.connect(self.select_surface)
+        layout.addWidget(self.surface_choice)
+        layout.addWidget(
+            label(
+                "Select Clear floor only after placing Cozmo on a spacious floor. "
+                "The cliff sensor is visible below, but cannot prove a table edge is safe.",
+                "notice",
+                True,
+            )
+        )
+        self.cliff_status = label("Cliff sensor: no real reading yet.", "muted", True)
+        layout.addWidget(self.cliff_status)
         self.arm_button = QPushButton("Enable motors")
         self.arm_button.setObjectName("primary")
         self.arm_button.clicked.connect(
@@ -351,6 +385,114 @@ class MainWindow(QMainWindow):
         layout.addStretch()
         return page
 
+    def games_page(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.addWidget(label("Play with Cozmo's Power Cubes.", "title"))
+        layout.addWidget(
+            label(
+                "Quick Tap, Memory Match and Keepaway are original-code recreations "
+                "based on cube taps, movement and lights. The original mobile app's "
+                "animations, unlocks and game engine are not part of direct Wi-Fi.",
+                "notice",
+                True,
+            )
+        )
+        layout.addWidget(
+            label(
+                "Connect Cubes 1–3 on the Cubes page first. Quick Tap needs Cubes 1 and 2, "
+                "Memory Match needs all three, Keepaway needs Cube 1. Games keep wheels still.",
+                "muted",
+                True,
+            )
+        )
+        self.game_choice = QComboBox()
+        self.game_choice.addItems(GAME_NAMES)
+        self.game_choice.setAccessibleName("Choose a Power Cube game")
+        layout.addWidget(self.game_choice)
+        buttons = QHBoxLayout()
+        self.game_start = QPushButton("Start game")
+        self.game_start.setObjectName("primary")
+        self.game_start.clicked.connect(self.start_game)
+        self.game_stop = QPushButton("Stop game")
+        self.game_stop.clicked.connect(
+            lambda: self.controller.submit("game", self.controller.stop_game)
+        )
+        buttons.addWidget(self.game_start)
+        buttons.addWidget(self.game_stop)
+        layout.addLayout(buttons)
+        self.game_score = label("You 0 · Cozmo 0", "title")
+        self.game_status = label(
+            "Choose a game to play with connected Power Cubes.", "notice", True
+        )
+        layout.addWidget(self.game_score)
+        layout.addWidget(self.game_status)
+        layout.addStretch()
+        return page
+
+    def conversation_page(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.addWidget(label("Talk with Cozmo.", "title"))
+        layout.addWidget(
+            label(
+                "Type a message for a model running locally in Ollama. Cozmo answers "
+                "through his speaker in direct mode and changes his eyes. The model "
+                "cannot control movement. No microphone or cloud service is used.",
+                "notice",
+                True,
+            )
+        )
+        self.chat_model = QLineEdit()
+        self.chat_model.setPlaceholderText("Installed Ollama model name, e.g. gemma3:1b")
+        self.chat_model.setAccessibleName("Local Ollama model name")
+        layout.addWidget(self.chat_model)
+        self.chat_transcript = QListWidget()
+        self.chat_transcript.setAccessibleName("Conversation transcript")
+        layout.addWidget(self.chat_transcript, 1)
+        self.chat_status = label(self.controller.chat_status, "muted", True)
+        layout.addWidget(self.chat_status)
+        row = QHBoxLayout()
+        self.chat_input = QLineEdit()
+        self.chat_input.setMaxLength(400)
+        self.chat_input.setPlaceholderText("Type a message to Cozmo")
+        self.chat_input.setAccessibleName("Message to Cozmo")
+        self.chat_input.returnPressed.connect(self.send_chat)
+        row.addWidget(self.chat_input)
+        self.chat_send = QPushButton("Send")
+        self.chat_send.setObjectName("primary")
+        self.chat_send.clicked.connect(self.send_chat)
+        row.addWidget(self.chat_send)
+        layout.addLayout(row)
+        layout.addWidget(
+            label(
+                "Install Ollama and a model separately in Ubuntu; use `ollama list` "
+                "to see installed names. Conversation stays in app memory for this session.",
+                "muted",
+                True,
+            )
+        )
+        return page
+
+    def send_chat(self) -> None:
+        if self.controller.chat_busy or self.controller.latched:
+            return
+        text = self.chat_input.text().strip()
+        if not text:
+            self.controller.chat_status = "Type a message first."
+            return
+        model = self.chat_model.text().strip()
+        self.controller.submit("chat", lambda: self.controller.send_chat(text, model))
+        self.chat_input.clear()
+
+    def start_game(self) -> None:
+        name = self.game_choice.currentText()
+        required = {"Quick Tap": 2, "Memory Match": 3, "Keepaway": 1}[name]
+        if not all(c.connected for c in self.controller.backend.state.cubes[:required]):
+            self.controller.message = f"Connect Cubes 1–{required} before playing {name}."
+            return
+        self.controller.submit("game", lambda: self.controller.start_game(name))
+
     def select_backend(self, index: int) -> None:
         self.release_controls()
         if self._mode_task is None or self._mode_task.done():
@@ -367,6 +509,9 @@ class MainWindow(QMainWindow):
             await self.controller.change_backend(backend)
             self._last_frame = None
             self._was_connected = False
+            self.surface_choice.blockSignals(True)
+            self.surface_choice.setCurrentIndex(0)
+            self.surface_choice.blockSignals(False)
             self.animations.filter()
             self.control.limit.setMaximum(backend.speed_cap)
             self.control.limit.setValue(int(self.controller.speed_limit))
@@ -456,8 +601,9 @@ class MainWindow(QMainWindow):
         layout.addWidget(export)
         layout.addWidget(
             label(
-                "AI conversation, voice recognition, full Freeplay and games remain planned. "
-                "Direct Wi-Fi controls are experimental. No microphone input is collected.",
+                "Optional local text conversation is on the Conversation page. Microphone "
+                "input and original app game assets are not included. Physical control "
+                "remains experimental.",
                 "notice",
                 True,
             )
@@ -506,8 +652,19 @@ class MainWindow(QMainWindow):
     def toggle_idle(self) -> None:
         backend = self.controller.backend
         self.controller.submit(
-            "idle", backend.disable_freeplay if backend.state.freeplay else backend.enable_freeplay
+            "freeplay",
+            self.controller.disable_freeplay
+            if backend.state.freeplay
+            else lambda: self.controller.enable_freeplay(
+                allow_movement=self.freeplay_movement.isChecked()
+            ),
         )
+
+    def select_surface(self, index: int) -> None:
+        if self.controller.backend.is_simulation or not self.controller.backend.state.connected:
+            return
+        mode = ("unknown", "table", "floor")[index]
+        self.controller.submit("surface", lambda: self.controller.backend.set_surface(mode))
 
     def navigate(self, index: int) -> None:
         self.release_controls()
@@ -637,20 +794,66 @@ class MainWindow(QMainWindow):
         self.cubes.setText(f"{sum(c.connected for c in state.cubes)} / 3")
         self.activity.setText(
             state.animation
-            or ("Idle expressions · stationary" if state.freeplay else "Ready when you are")
+            or (
+                "Freeplay · slow floor roaming"
+                if state.freeplay and self.controller.freeplay_allows_motion
+                else ("Freeplay · eyes and sounds" if state.freeplay else "Ready when you are")
+            )
         )
-        self.freeplay.setText(
-            "Stop idle expressions" if state.freeplay else "Start idle expressions"
+        self.freeplay.setText("Stop Freeplay" if state.freeplay else "Start Freeplay")
+        self.freeplay_movement.setEnabled(
+            state.connected and not state.freeplay and not self.controller.latched
         )
+        moving = state.freeplay and self.controller.freeplay_allows_motion
         self.home_detail.setText(
             f"Camera {'ready' if state.camera_available else 'offline'} · "
             f"{'Test face detected' if state.face_detected else 'Face recognition off'} · "
-            f"{'Charging' if state.charging else 'Not charging'} · AI off · Autonomous driving off"
+            f"{'Charging' if state.charging else 'Not charging'} · Local chat optional · "
+            f"Autonomous movement {'on' if moving else 'off'}"
         )
         self.control.refresh(state)
-        self.arm_button.setEnabled(
-            state.connected and not state.motors_enabled and not self.controller.latched
+        game = self.controller.game_state
+        self.game_score.setText(f"You {game.player_score} · Cozmo {game.cozmo_score}")
+        self.game_status.setText(f"{game.name} · Round {game.round} · {game.instruction}")
+        self.game_start.setEnabled(state.connected and not self.controller.latched)
+        self.game_stop.setEnabled(game.phase not in ("idle", "finished", "cancelled"))
+        if self.chat_transcript.count() != len(self.controller.chat_turns):
+            self.chat_transcript.clear()
+            for chat_turn in self.controller.chat_turns:
+                self.chat_transcript.addItem(
+                    ("You: " if chat_turn.role == "user" else "Cozmo: ") + chat_turn.text
+                )
+            self.chat_transcript.scrollToBottom()
+        self.chat_status.setText(self.controller.chat_status)
+        self.chat_send.setEnabled(
+            state.connected and not self.controller.latched and not self.controller.chat_busy
         )
+        self.surface_choice.setEnabled(
+            state.connected and not self.controller.backend.is_simulation
+        )
+        surface_index = {"unknown": 0, "table": 1, "floor": 2}.get(state.surface_mode, 0)
+        if self.surface_choice.currentIndex() != surface_index:
+            self.surface_choice.blockSignals(True)
+            self.surface_choice.setCurrentIndex(surface_index)
+            self.surface_choice.blockSignals(False)
+        self.arm_button.setEnabled(
+            state.connected
+            and state.surface_mode == "floor"
+            and not state.motors_enabled
+            and not self.controller.latched
+        )
+        if self.controller.backend.is_simulation:
+            self.cliff_status.setText("Synthetic mode: no physical cliff sensor.")
+        else:
+            raw = (
+                "unavailable"
+                if state.cliff_raw is None
+                else ", ".join(str(value) for value in state.cliff_raw)
+            )
+            self.cliff_status.setText(
+                f"Cliff: {'DETECTED' if state.cliff_detected else 'not flagged'}"
+                f" · raw {raw} · pickup {'yes' if state.picked_up else 'no'}"
+            )
         self.motor_status.setText(
             state.safety_status
             or (

@@ -1,6 +1,6 @@
 # Echter Cozmo unter Ubuntu / experimental direct Wi-Fi
 
-Version 0.2.0 implements a physical adapter using PyCozmo 0.8.0. It sends real robot
+Version 0.3.0 implements a physical adapter using PyCozmo 0.8.0. It sends real robot
 commands. Transport codecs, the worker watchdog and Qt integration have automated
 hardware-free tests. **Physical hardware validation is still pending.** No phone
 bridge, firmware updater or original mobile-app behavior engine is included.
@@ -52,8 +52,9 @@ Eine passende Route allein beweist keine Roboterverbindung.
   niemals zu einem automatischen Wechsel zum Simulator.
 - Zunächst Kamera, Batteriespannung und Augen testen. Eigene Fahr-/Kopf-/Liftbefehle
   bleiben gesperrt. **Cozmo kann beim Protokollstart selbst kalibrieren.**
-- Cozmo auf einen freien Boden setzen, dann **Connection → Enable motors** wählen.
-  Nicht auf einer Tischkante testen.
+- Cozmo auf einen freien Boden setzen, **Connection → Clear floor** und danach
+  **Enable motors** wählen. Der Zustand **Elevated/table** sperrt Fahrbefehle.
+  Nicht auf einer Tischkante fahren oder Freeplay dort bewegen lassen.
 - **Control**: WASD zum Fahren gedrückt halten, loslassen zum Stoppen; Pfeiltasten
   hoch/runter bewegen den Kopf, R/F den Lift. Anfangs 20 mm/s, maximal 40 mm/s.
 - **Speak**: lokales deutsches eSpeak NG über Cozmos Lautsprecher. Kein Mikrofon.
@@ -63,8 +64,18 @@ Eine passende Route allein beweist keine Roboterverbindung.
 - **Camera**: echte Graustufenbilder, Vorschau bis 5 Bilder/s, PNG-Schnappschüsse.
   Keine simulierten Gesichts-/Würfelmarkierungen.
 - **Cubes**: erster Klick verbindet einen erkannten Würfel, zweiter Klick setzt
-  seine LEDs auf Grün. Tap-/Bewegungsereignisse bleiben kurz sichtbar. Würfelbatterie,
-  Ausrichtung und Spiele sind nicht implementiert.
+  seine LEDs auf Grün. Tap-/Bewegungsereignisse bleiben kurz sichtbar. Würfelbatterie
+  und Ausrichtung sind nicht verfügbar.
+- **Home → Start Freeplay**: Augen, Blick, Stimmung und synthetisierte Laute laufen
+  selbstständig. Die separate Bewegungsoption erfordert Clear floor und Enable motors.
+- **Games**: Quick Tap mit Würfel 1/2, Memory Match mit 1–3, Keepaway mit 1.
+  Eigenständig programmierte Spielregeln nutzen LEDs und Tap-/Bewegungsereignisse.
+  Die proprietäre Original-App und ihre Spiel-Engine sind nicht enthalten. Keepaway
+  verfolgt den Würfel nicht räumlich; die direkte Verbindung liefert dafür derzeit
+  keine verlässlich geprüfte Würfelposition. Während Spielen bleiben die Räder still.
+- **Conversation**: optionales lokales Ollama-Modell. In Ubuntu Ollama und ein Modell
+  separat installieren, mit `ollama list` dessen Namen prüfen, diesen in der App
+  eingeben und Text senden. Die Antwort erscheint und wird gesprochen. Kein Mikrofon.
 - **STOP** bricht Desktop-Aktionen ab und sperrt die Bedienung bis **Resume controls**.
   Nach Verbindungsfehlern erneut **Connect Cozmo** wählen. Nach Watchdog-, Pickup-,
   Lade- oder Klippenereignissen zusätzlich **Enable motors** betätigen.
@@ -86,17 +97,23 @@ keine zugesicherte Stoppdistanz oder Stoppzeit.
 ## Fehlerhilfe
 
 - Kein WLAN-Gerät: USB-Durchreichung und Linux-Treiber des Adapters prüfen.
+- WLAN vorhanden, aber Route falsch: `nmcli device status` und
+  `ip route get 172.31.1.1` prüfen; der WLAN-Adapter muss `connected` sein und die
+  Quelladresse muss aus `172.31.1.x` kommen. Cozmos WLAN ohne Internet ist normal.
 - Falsche Quelladresse: Ubuntu mit Cozmos WLAN verbinden; Route/VPN prüfen.
 - Keine Telemetrie: mobile App beenden, Cozmo aufwecken, WLAN erneut verbinden.
 - Python-Fehler: Startskript verwenden; es nutzt `.venv312`, nicht Python 3.14.
 - Motoren gesperrt: Kamera/Status prüfen, Cozmo vom Ladegerät auf den Boden setzen,
   Resume controls nach STOP und anschließend Enable motors wählen.
 - Keine Sprache: `espeak-ng --version` prüfen. Proprietäre Sounds sind nicht nötig.
+- Kein Chat: Ollama in derselben Ubuntu-VM starten, `ollama list` prüfen und exakt
+  einen installierten Modellnamen in Conversation eingeben.
 
 ## Physical validation record
 
 Pending: robot/firmware version, Ubuntu version, Wi-Fi adapter, connect/disconnect,
 camera/OLED, TTS, head/lift, supervised low-speed wheels, key/focus/STOP response,
-lost GUI/UDP/telemetry, pickup/cliff, individual cube connect/tap/lights. Record
+lost GUI/UDP/telemetry, pickup/cliff and raw cliff readings on several surfaces,
+individual cube connect/tap/lights, Freeplay movement and game timing. Record
 observed results before describing this adapter as stable. No original app assets,
 OBB archives or firmware images are downloaded by the application.

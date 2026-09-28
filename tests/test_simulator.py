@@ -114,7 +114,7 @@ async def test_animation_cancel_and_freeplay_stop(robot):
     assert robot.state.animation is None
     await robot.enable_freeplay()
     robot.advance(6.5, time.monotonic())
-    assert robot.state.expression == "Curious"
+    assert robot.state.freeplay
     assert robot.state.left_speed == 0
     await robot.stop()
     assert not robot.state.freeplay

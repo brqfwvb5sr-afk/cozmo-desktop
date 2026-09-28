@@ -8,6 +8,7 @@ from PySide6.QtGui import QKeyEvent
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
+from cozmo_desktop.ai.actions import AIResponse
 from cozmo_desktop.robot.base import RobotError
 from cozmo_desktop.robot.simulator import SimulatorBackend
 from cozmo_desktop.services.controller import RobotController
@@ -174,6 +175,9 @@ async def test_switch_to_direct_shows_real_mode_and_locks_motor_controls(window)
     window.refresh()
     assert window.battery.text() == "3.92 V"
     assert window.control.speak.isEnabled() and not window.control.head.isEnabled()
+    assert not window.arm_button.isEnabled()
+    backend._state = replace(backend.state, surface_mode="floor")
+    window.refresh()
     assert window.arm_button.isEnabled()
     QTest.keyPress(window.control, Qt.Key.Key_W)
     assert not window.keys
@@ -212,3 +216,41 @@ async def test_reconnect_button_recovers_after_failed_physical_connection(window
     await window._connection_task
     assert backend.state.connected and not window.controller.latched
     assert not backend.state.motors_enabled
+
+
+async def test_games_page_starts_and_stop_cleans_cube_lights(window):
+    window.connect_button.click()
+    await asyncio.sleep(0.02)
+    window.navigation.setCurrentRow(8)
+    await asyncio.sleep(0.02)
+    window.refresh()
+    assert window.game_start.isEnabled()
+    window.game_choice.setCurrentText("Keepaway")
+    window.game_start.click()
+    await asyncio.sleep(0.05)
+    window.refresh()
+    assert window.controller.game_state.phase == "watch"
+    assert window.controller.backend.state.cubes[0].light_color == "green"
+    window.game_stop.click()
+    await asyncio.sleep(0.05)
+    window.refresh()
+    assert window.controller.game_state.phase == "cancelled"
+    assert window.controller.backend.state.cubes[0].light_color == "off"
+    assert not window.controller.latched
+
+
+async def test_conversation_page_sends_local_reply_and_speaks(window, monkeypatch):
+    await connect_control(window)
+    reply = AsyncMock(return_value=AIResponse("Hallo!", "Happy", "none"))
+    monkeypatch.setattr("cozmo_desktop.services.controller.local_reply", reply)
+    window.navigation.setCurrentRow(9)
+    await asyncio.sleep(0.01)
+    window.chat_model.setText("small:1b")
+    window.chat_input.setText("Guten Tag")
+    window.chat_send.click()
+    await window.controller._tasks["chat"]
+    window.refresh()
+    assert window.chat_transcript.count() == 2
+    assert window.chat_transcript.item(1).text() == "Cozmo: Hallo!"
+    assert window.controller.backend.state.speech == "Hallo!"
+    assert window.controller.backend.state.expression == "Happy"
