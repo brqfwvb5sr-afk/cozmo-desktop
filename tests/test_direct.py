@@ -12,7 +12,7 @@ from unittest.mock import Mock
 import pytest
 from PIL import Image
 
-from cozmo_desktop.robot.base import CubeEvent, RobotError, RobotState
+from cozmo_desktop.robot.base import VOCALIZATIONS, CubeEvent, RobotError, RobotState
 from cozmo_desktop.robot.direct import backend as endpoint
 from cozmo_desktop.robot.direct.backend import DirectBackend, synthesize, synthesize_vocalization
 from cozmo_desktop.robot.direct.transport import PyCozmoTransport
@@ -198,18 +198,23 @@ def test_real_cube_connect_and_lights_packets(transport):
 
 
 def test_original_vocalization_is_small_pcm_and_real_sdk_audio(transport):
-    for kind in ("chirp", "grumble"):
+    samples = set()
+    for kind in VOCALIZATIONS:
         data = synthesize_vocalization(kind)
-        assert len(data) < 25_000
+        assert len(data) < 35_000
         with wave.open(io.BytesIO(data)) as stream:
             assert (stream.getframerate(), stream.getnchannels(), stream.getsampwidth()) == (
                 22050,
                 1,
                 2,
             )
+            sample = stream.readframes(256)
+            assert any(sample)
+            samples.add(sample)
         transport.audio(data)
         packet, _, _ = transport.client.anim_controller.queue.get()
         assert packet.to_bytes()
+    assert len(samples) == len(VOCALIZATIONS)
     with pytest.raises(RobotError):
         synthesize_vocalization("copyrighted-file.wav")
 

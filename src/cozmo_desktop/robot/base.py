@@ -5,6 +5,8 @@ from dataclasses import dataclass, field
 
 from PIL import Image
 
+VOCALIZATIONS = ("chirp", "grumble", "question", "happy", "sleepy")
+
 
 class RobotError(Exception):
     """A recoverable, user-facing robot error (never include secrets)."""

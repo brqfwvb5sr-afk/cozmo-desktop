@@ -131,7 +131,7 @@ class PersonalityDirector:
                         self.invite_until = now + 4
                         self.next_invite = now + self.rng.uniform(22, 36)
                         await self.backend.set_cube_color(self.invite_cube, "blue")
-                        await self.backend.play_sound("chirp")
+                        await self.backend.play_sound("question")
                         event = "Curious"
                 if event or now >= self.next_mood:
                     self.mood = event or self.rng.choice(
@@ -152,7 +152,15 @@ class PersonalityDirector:
                     )
                     self.next_blink = now + self.rng.uniform(3, 7)
                 if now >= self.next_sound:
-                    await self.backend.play_sound("grumble" if self.mood == "Angry" else "chirp")
+                    sound = {
+                        "Angry": "grumble",
+                        "Happy": "happy",
+                        "Excited": "happy",
+                        "Curious": "question",
+                        "Confused": "question",
+                        "Sleepy": "sleepy",
+                    }.get(self.mood, "chirp")
+                    await self.backend.play_sound(sound)
                     self.next_sound = now + self.rng.uniform(12, 22)
                 if now >= self.next_head:
                     if safe_to_move(state):

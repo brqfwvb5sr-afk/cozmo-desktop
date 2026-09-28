@@ -63,7 +63,7 @@ class GameDirector:
         self._score(player=player)
         mood = "Sad" if player else "Happy"
         await self.backend.display_face(render_face(mood), mood)
-        await self.backend.play_sound("grumble" if player else "chirp")
+        await self.backend.play_sound("grumble" if player else "happy")
 
     async def _wait_for(self, number: int, sequence: int, seconds: float, *, tap: bool) -> bool:
         deadline = self.clock() + seconds

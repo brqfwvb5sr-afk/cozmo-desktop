@@ -20,6 +20,7 @@ from PIL import Image
 
 from cozmo_desktop.face.expressions import render_face
 from cozmo_desktop.robot.base import (
+    VOCALIZATIONS,
     Animation,
     NotConnectedError,
     RobotBackend,
@@ -65,23 +66,35 @@ def synthesize(text: str) -> bytes:
 
 
 def synthesize_vocalization(kind: str) -> bytes:
-    """Generate a short original robot-like chirp; no audio assets or eSpeak needed."""
-    if kind not in ("chirp", "grumble"):
+    """Generate short emotional robot tones; no sampled assets or eSpeak needed."""
+    if kind not in VOCALIZATIONS:
         raise RobotError("Unknown robot vocalization.")
     import array
 
     rate = 22050
-    count = int(rate * 0.32)
+    durations = {"chirp": 0.32, "grumble": 0.42, "question": 0.45, "happy": 0.52, "sleepy": 0.6}
+    count = int(rate * durations[kind])
     pcm = array.array("h")
+    phase = 0.0
     for sample in range(count):
         progress = sample / count
-        envelope = min(1.0, progress * 18, (1 - progress) * 20)
-        frequency = (
-            550 + 430 * progress
-            if kind == "chirp"
-            else 180 + 35 * math.sin(2 * math.pi * progress * 6)
-        )
-        value = int(11000 * envelope * math.sin(2 * math.pi * frequency * sample / rate))
+        envelope = min(1.0, progress * 24, (1 - progress) * 24)
+        if kind == "chirp":
+            frequency = 550 + 430 * progress
+        elif kind == "grumble":
+            frequency = 185 + 35 * math.sin(2 * math.pi * progress * 7)
+            envelope *= 0.6 + 0.3 * math.sin(2 * math.pi * progress * 11) ** 2
+        elif kind == "question":
+            frequency = 380 - 100 * progress + 480 * progress**3
+        elif kind == "happy":
+            syllable = (progress * 2) % 1
+            frequency = (580 if progress < 0.5 else 720) + 330 * syllable
+            envelope *= min(1.0, syllable * 25, (1 - syllable) * 25)
+        else:
+            frequency = 340 - 180 * progress + 8 * math.sin(2 * math.pi * progress * 3)
+            envelope *= 0.7
+        phase += 2 * math.pi * frequency / rate
+        value = int(9000 * envelope * (math.sin(phase) + 0.2 * math.sin(2 * phase)))
         pcm.append(value)
     output = io.BytesIO()
     with wave.open(output, "wb") as audio:

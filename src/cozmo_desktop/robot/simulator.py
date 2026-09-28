@@ -9,6 +9,7 @@ from dataclasses import replace
 from PIL import Image, ImageDraw
 
 from .base import (
+    VOCALIZATIONS,
     Animation,
     CubeEvent,
     CubeState,
@@ -123,7 +124,7 @@ class SimulatorBackend(RobotBackend):
 
     async def play_sound(self, kind: str) -> None:
         self._require_connection()
-        if kind not in ("chirp", "grumble"):
+        if kind not in VOCALIZATIONS:
             raise RobotError("Unknown robot vocalization.")
         self._event(f"Simulated vocalization: {kind}")
 

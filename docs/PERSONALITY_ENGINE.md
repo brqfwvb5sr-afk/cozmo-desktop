@@ -1,7 +1,9 @@
 # Personality direction
 
 Version 0.3.0 adds a controller-owned personality director. It changes original
-procedural eyes, blinks, shifts gaze and makes original short synthesized sounds.
+procedural eyes, blinks, shifts gaze and makes five original short synthesized
+sounds. The chirp, grumble, question, happy and sleepy sounds are generated as
+small PCM clips without proprietary samples and selected from the current mood.
 Cube tap/movement events, hazard flags and battery voltage influence the mood.
 The director runs in both simulator and experimental direct Wi-Fi mode.
 With a connected Power Cube, it occasionally lights one cube blue as an invitation.
