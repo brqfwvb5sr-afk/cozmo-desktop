@@ -4,6 +4,9 @@ Version 0.3.0 adds a controller-owned personality director. It changes original
 procedural eyes, blinks, shifts gaze and makes original short synthesized sounds.
 Cube tap/movement events, hazard flags and battery voltage influence the mood.
 The director runs in both simulator and experimental direct Wi-Fi mode.
+With a connected Power Cube, it occasionally lights one cube blue as an invitation.
+A tap changes the cube briefly to green and Cozmo's eyes to Happy. The light is
+cleared on timeout, cancellation, disconnect or game handoff.
 
 Random and clock inputs are injected in tests. These behaviors are original-code
 recreations, not the official Freeplay engine or proprietary animations/sounds.

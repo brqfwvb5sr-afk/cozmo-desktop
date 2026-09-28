@@ -2,7 +2,8 @@
 
 ## 0.3.0 — 2026-09-28
 
-- Add spontaneous procedural moods, gaze, blinking and synthesized vocalizations.
+- Add spontaneous procedural moods, gaze, blinking, synthesized vocalizations and
+  tappable cube-light invitations.
 - Add an explicitly enabled slow floor-roaming mode; elevated surfaces keep wheels locked.
 - Expose raw cliff telemetry and pickup/fall/charger flags for supervised checks.
 - Add a motor-locked cliff sensor trace for physical calibration.

@@ -42,16 +42,31 @@ class PersonalityDirector:
         self.gaze = 0
         self.last_taps = tuple(c.tap_sequence for c in backend.state.cubes)
         self.last_moves = tuple(c.move_sequence for c in backend.state.cubes)
+        self.last_tapped_number = 0
         self.next_mood = 0.0
         self.next_blink = 0.0
         self.next_sound = 0.0
         self.next_head = 0.0
         self.next_roam = 0.0
+        self.next_invite = 0.0
+        self.invite_cube = 0
+        self.invite_until = 0.0
+        self.invite_succeeded = False
 
     def _event_mood(self, state: RobotState) -> str | None:
         taps = tuple(c.tap_sequence for c in state.cubes)
         moves = tuple(c.move_sequence for c in state.cubes)
         tapped = any(current > prior for current, prior in zip(taps, self.last_taps, strict=True))
+        self.last_tapped_number = next(
+            (
+                number
+                for number, (current, prior) in enumerate(
+                    zip(taps, self.last_taps, strict=True), start=1
+                )
+                if current > prior
+            ),
+            0,
+        )
         moved = any(current > prior for current, prior in zip(moves, self.last_moves, strict=True))
         self.last_taps, self.last_moves = taps, moves
         if any(getattr(state, flag) for flag in HAZARDS):
@@ -89,11 +104,38 @@ class PersonalityDirector:
         self.next_sound = now + 5
         self.next_head = now + 4
         self.next_roam = now + 4
+        self.next_invite = now + 8
         try:
             while self.backend.state.connected and self.backend.state.freeplay:
                 state = self.backend.state
                 now = self.clock()
                 event = self._event_mood(state)
+                if self.invite_cube:
+                    cube_connected = state.cubes[self.invite_cube - 1].connected
+                    hazardous = any(getattr(state, flag) for flag in HAZARDS)
+                    if now >= self.invite_until or not cube_connected or hazardous:
+                        if cube_connected:
+                            await self.backend.set_cube_color(self.invite_cube, "off")
+                        self.invite_cube = 0
+                    elif self.last_tapped_number == self.invite_cube and not self.invite_succeeded:
+                        await self.backend.set_cube_color(self.invite_cube, "green")
+                        self.invite_succeeded = True
+                        self.invite_until = now + 0.6
+                        event = "Happy"
+                elif (
+                    now >= self.next_invite
+                    and not any(getattr(state, flag) for flag in HAZARDS)
+                    and (state.battery_voltage is None or state.battery_voltage >= 3.5)
+                ):
+                    connected = tuple(c.number for c in state.cubes if c.connected)
+                    if connected:
+                        self.invite_cube = self.rng.choice(connected)
+                        self.invite_succeeded = False
+                        self.invite_until = now + 4
+                        self.next_invite = now + self.rng.uniform(22, 36)
+                        await self.backend.set_cube_color(self.invite_cube, "blue")
+                        await self.backend.play_sound("chirp")
+                        event = "Curious"
                 if event or now >= self.next_mood:
                     self.mood = event or self.rng.choice(
                         ("Neutral", "Curious", "Happy", "Sleepy", "Confused", "Angry")
@@ -125,4 +167,13 @@ class PersonalityDirector:
                     self.next_roam = now + self.rng.uniform(6, 12)
                 await self.pause(0.1)
         finally:
+            if (
+                self.invite_cube
+                and self.backend.state.connected
+                and self.backend.state.cubes[self.invite_cube - 1].connected
+            ):
+                try:
+                    await self.backend.set_cube_color(self.invite_cube, "off")
+                except RobotError:
+                    pass
             await self.backend.disable_freeplay()

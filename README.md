@@ -33,7 +33,8 @@ application; its captures are attached to each successful Actions run.*
   tap and movement events.
 - Simulator: synthetic camera with test overlays. Both modes support PNG snapshots.
 - Cancellable personality with moods, blinking, gaze and original vocalizations;
-  slow floor roaming requires explicit opt-in and motor arming. Table mode locks wheels.
+  cube-tap invitations; slow floor roaming requires explicit opt-in and motor
+  arming. Table mode locks wheels.
 - Original-code Quick Tap, Memory Match and Keepaway rule recreations using cube events.
   These do not contain the original mobile game's engine or assets.
 - Optional text conversation through locally running Ollama, bounded to speech and

@@ -137,6 +137,76 @@ async def test_roam_halts_when_a_hazard_appears_mid_move(monkeypatch):
     await robot.disconnect()
 
 
+async def test_freeplay_invites_cube_and_reacts_to_a_real_tap(monkeypatch):
+    robot = SimulatorBackend()
+    await robot.connect()
+    await robot.enable_freeplay()
+    robot._state = replace(robot.state, surface_mode="table")
+    clock = VirtualClock()
+    lights = []
+    original_set_color = robot.set_cube_color
+
+    async def color(number, value):
+        lights.append((number, value))
+        await original_set_color(number, value)
+
+    monkeypatch.setattr(robot, "set_cube_color", color)
+    tapped = [False]
+
+    def tap_invited_cube():
+        if tapped[0]:
+            return
+        invited = next((cube for cube in robot.state.cubes if cube.light_color == "blue"), None)
+        if invited:
+            robot._state = replace(
+                robot.state,
+                cubes=tuple(
+                    replace(cube, tap_sequence=cube.tap_sequence + 1)
+                    if cube.number == invited.number
+                    else cube
+                    for cube in robot.state.cubes
+                ),
+            )
+            tapped[0] = True
+
+    clock.hook = tap_invited_cube
+    director = PersonalityDirector(robot, clock=clock.time, pause=clock.pause)
+    task = asyncio.create_task(director.run())
+    async with asyncio.timeout(2):
+        while clock.now < 111:  # noqa: ASYNC110 - wait for the injected clock
+            await asyncio.sleep(0.001)
+    task.cancel()
+    await asyncio.gather(task, return_exceptions=True)
+    assert tapped[0]
+    assert any(color == "green" for _, color in lights)
+    assert lights[-1][1] == "off"
+    assert all(cube.light_color == "off" for cube in robot.state.cubes)
+    await robot.disconnect()
+
+
+async def test_cancelling_freeplay_clears_an_unanswered_invitation(monkeypatch):
+    robot = SimulatorBackend()
+    await robot.connect()
+    await robot.enable_freeplay()
+    lit = asyncio.Event()
+    original_set_color = robot.set_cube_color
+
+    async def color(number, value):
+        await original_set_color(number, value)
+        if value == "blue":
+            lit.set()
+
+    monkeypatch.setattr(robot, "set_cube_color", color)
+    clock = VirtualClock()
+    director = PersonalityDirector(robot, clock=clock.time, pause=clock.pause)
+    task = asyncio.create_task(director.run())
+    await asyncio.wait_for(lit.wait(), 2)
+    task.cancel()
+    await asyncio.gather(task, return_exceptions=True)
+    assert all(c.light_color == "off" for c in robot.state.cubes)
+    await robot.disconnect()
+
+
 async def test_manual_action_and_stop_preempt_freeplay():
     robot = SimulatorBackend()
     await robot.connect()
