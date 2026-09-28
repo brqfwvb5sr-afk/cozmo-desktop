@@ -8,6 +8,7 @@
 - Add an explicitly enabled slow floor-roaming mode; elevated surfaces keep wheels locked.
 - Expose raw cliff telemetry and pickup/fall/charger flags for supervised checks.
 - Add a motor-locked cliff sensor trace for physical calibration.
+- Add a channel-by-channel diagnostic comparison to exported cliff traces without unlocking table driving.
 - Add original-code Quick Tap, Memory Match and Keepaway rule recreations with cube LEDs.
 - Add optional local Ollama text conversation with bounded speech and emotion output.
 - Extend tests for cube event ordering, safety gates, personality and conversation.

@@ -61,8 +61,11 @@ Eine passende Route allein beweist keine Roboterverbindung.
   (`front edge` usw.) markieren. Danach **Stop sensor trace** und **Export trace** wählen. Niemals
   für diese Messung Fahrmotoren freigeben oder Cozmo an einer Kante loslassen.
   Die JSON-Datei enthält nur relative Zeit, vier Rohwerte, Positionsmarkierung,
-  Raddrehzahlen und Sicherheitsflags; keine Kamera, Sprache, WLAN-Daten oder Konten. Ohne Auswertung
-  echter Messungen bleibt Tischfahren gesperrt.
+  Raddrehzahlen und Sicherheitsflags; keine Kamera, Sprache, WLAN-Daten oder Konten.
+  Ein Diagnoseblock zeigt pro Position die Wertebereiche der vier Kanäle und meldet
+  fehlende oder durch Bewegung verfälschte Messungen. Die Zuordnung der Kanäle zu
+  den Sensorpositionen und die Stopplatenz sind noch nicht verifiziert. Auch bei
+  getrennten Wertebereichen bleibt Tischfahren gesperrt.
 - **Control**: WASD zum Fahren gedrückt halten, loslassen zum Stoppen; Pfeiltasten
   hoch/runter bewegen den Kopf, R/F den Lift. Anfangs 20 mm/s, maximal 40 mm/s.
 - **Speak**: lokales deutsches eSpeak NG über Cozmos Lautsprecher. Kein Mikrofon.

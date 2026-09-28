@@ -30,7 +30,7 @@ from cozmo_desktop.face.expressions import NAMES, Expression, apply_expression, 
 from cozmo_desktop.robot.base import RobotError
 from cozmo_desktop.robot.direct.backend import DirectBackend
 from cozmo_desktop.robot.simulator import SimulatorBackend
-from cozmo_desktop.services.cliff_trace import LABELS, MAX_SAMPLES, CliffTrace
+from cozmo_desktop.services.cliff_trace import LABELS, MAX_SAMPLES, CliffTrace, analyze_trace
 from cozmo_desktop.services.controller import RobotController
 from cozmo_desktop.services.diagnostics import export_report
 from cozmo_desktop.services.games import GAME_NAMES
@@ -716,7 +716,12 @@ class MainWindow(QMainWindow):
         if path:
             try:
                 self.cliff_trace.export(Path(path))
-                self.cliff_trace.message = "Sensor trace exported."
+                status = analyze_trace(self.cliff_trace.samples)["status"]
+                self.cliff_trace.message = (
+                    "Sensor trace exported with diagnostic comparison; table driving stays locked."
+                    if status == "comparison_only"
+                    else "Trace exported; measurements incomplete. Table driving stays locked."
+                )
             except OSError:
                 self.cliff_trace.message = "Could not export sensor trace. Choose another folder."
 

@@ -23,7 +23,9 @@ their behavior. The robot's cliff-stop protocol setting remains enabled.
 An explicit motor-locked cliff trace keeps at most 300 in-memory samples. It stops
 when motor control is enabled and exports only relative time, four raw sensor
 values, wheel-speed readings, user-selected position labels and hazard flags.
-It never initiates motion.
+Its exported diagnostic report excludes missing or moving readings and compares
+each raw channel's ranges across labeled positions. The channel-to-sensor mapping
+is unverified, and the report never permits table driving. It never initiates motion.
 
 qasync integrates Qt and asyncio on one event loop. Immutable state snapshots keep
 presentation separate from backend mutation. Controller-owned tasks isolate errors,
