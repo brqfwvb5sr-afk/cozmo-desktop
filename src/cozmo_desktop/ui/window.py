@@ -235,8 +235,9 @@ class MainWindow(QMainWindow):
         self.freeplay = QPushButton("Start Freeplay")
         self.freeplay.clicked.connect(self.toggle_idle)
         row.addWidget(self.freeplay)
-        self.freeplay_movement = QCheckBox("Self-directed movement on a clear floor")
+        self.freeplay_movement = QCheckBox("Let Cozmo roam on a clear floor")
         self.freeplay_movement.setAccessibleName("Allow supervised floor roaming")
+        self.freeplay_movement.toggled.connect(self.toggle_roaming)
         explore = QPushButton("Browse expressions")
         explore.clicked.connect(lambda: self.navigation.setCurrentRow(2))
         row.addWidget(explore)
@@ -245,6 +246,16 @@ class MainWindow(QMainWindow):
         row.addWidget(camera)
         activity_layout.addLayout(row)
         activity_layout.addWidget(self.freeplay_movement)
+        activity_layout.addWidget(
+            label(
+                "Eyes, blinking and sounds start when Cozmo connects. "
+                "For roaming, select this checkbox; Cozmo starts after you select a clear "
+                "floor and enable motors on Connection. "
+                "Manual speed is adjustable on Control (physical cap: 40 mm/s).",
+                "muted",
+                True,
+            )
+        )
         games = QPushButton("Play cube games")
         games.clicked.connect(lambda: self.navigation.setCurrentRow(8))
         activity_layout.addWidget(games)
@@ -372,7 +383,7 @@ class MainWindow(QMainWindow):
         self.arm_button = QPushButton("Enable motors")
         self.arm_button.setObjectName("primary")
         self.arm_button.clicked.connect(
-            lambda: self.controller.submit("arm", self.controller.backend.arm_motors)
+            lambda: self.controller.submit("arm", self.arm_and_start_roaming)
         )
         layout.addWidget(self.arm_button)
         self.motor_status = label("Motor control is locked.", "notice", True)
@@ -814,8 +825,7 @@ class MainWindow(QMainWindow):
 
     async def wake(self) -> None:
         await self.controller.backend.connect()
-        await self.controller.backend.display_face(render_face("Happy"), "Happy")
-        self.controller.message = "Connected. Physical motors remain locked until enabled."
+        await self.controller.wake_up()
 
     def toggle_connection(self) -> None:
         self.release_controls()
@@ -834,7 +844,7 @@ class MainWindow(QMainWindow):
                 await self.controller.resume()
             if not self.controller.latched:
                 await self.controller.backend.connect()
-                self.controller.message = "Connected. Check Connection for motor status."
+                await self.controller.wake_up()
         except asyncio.CancelledError:
             raise
         except Exception as exc:
@@ -845,6 +855,10 @@ class MainWindow(QMainWindow):
 
     def toggle_idle(self) -> None:
         backend = self.controller.backend
+        if backend.state.freeplay and self.freeplay_movement.isChecked():
+            self.freeplay_movement.blockSignals(True)
+            self.freeplay_movement.setChecked(False)
+            self.freeplay_movement.blockSignals(False)
         self.controller.submit(
             "freeplay",
             self.controller.disable_freeplay
@@ -853,6 +867,30 @@ class MainWindow(QMainWindow):
                 allow_movement=self.freeplay_movement.isChecked()
             ),
         )
+
+    async def arm_and_start_roaming(self) -> None:
+        await self.controller.backend.arm_motors()
+        if self.freeplay_movement.isChecked():
+            await self.controller.enable_freeplay(allow_movement=True)
+
+    def toggle_roaming(self, enabled: bool) -> None:
+        state = self.controller.backend.state
+        if not state.connected or self.controller.latched:
+            return
+        if enabled:
+            if not state.motors_enabled or state.surface_mode != "floor":
+                self.controller.message = (
+                    "Place Cozmo on a clear floor, then select Enable motors to start roaming."
+                )
+                return
+            self.controller.submit("freeplay", self._start_roaming)
+        elif self.controller.freeplay_allows_motion:
+            self.controller.submit("freeplay", self.controller.disable_freeplay)
+
+    async def _start_roaming(self) -> None:
+        if self.controller.backend.state.freeplay:
+            await self.controller.disable_freeplay()
+        await self.controller.enable_freeplay(allow_movement=True)
 
     def select_surface(self, index: int) -> None:
         if self.controller.backend.is_simulation or not self.controller.backend.state.connected:
@@ -895,6 +933,9 @@ class MainWindow(QMainWindow):
 
     def navigate(self, index: int) -> None:
         self.release_controls()
+        self.controller.code_mode = index == 10
+        if index == 10:
+            asyncio.create_task(self.controller.stop_ambient())
         self.stack.setCurrentIndex(index)
         self.page_title.setText(PAGES[index])
         if index == 10 and (self._code_start_task is None or self._code_start_task.done()):
@@ -1112,13 +1153,19 @@ class MainWindow(QMainWindow):
             or (
                 "Freeplay · slow floor roaming"
                 if state.freeplay and self.controller.freeplay_allows_motion
-                else ("Freeplay · eyes and sounds" if state.freeplay else "Ready when you are")
+                else (
+                    "Freeplay · eyes and sounds"
+                    if state.freeplay
+                    else (
+                        "Cozmo is awake · eyes and sounds"
+                        if state.connected and self.controller._ambient_task is not None
+                        else "Ready when you are"
+                    )
+                )
             )
         )
         self.freeplay.setText("Stop Freeplay" if state.freeplay else "Start Freeplay")
-        self.freeplay_movement.setEnabled(
-            state.connected and not state.freeplay and not self.controller.latched
-        )
+        self.freeplay_movement.setEnabled(state.connected and not self.controller.latched)
         moving = state.freeplay and self.controller.freeplay_allows_motion
         self.home_detail.setText(
             f"Camera {'ready' if state.camera_available else 'offline'} · "

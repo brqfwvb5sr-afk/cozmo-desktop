@@ -65,6 +65,7 @@ class ScratchCommands:
                 state = self.controller.backend.state
                 if state.cliff_detected or state.picked_up or state.falling:
                     raise ScratchCommandError("Cozmo stopped because of a safety sensor.")
+                await self.controller.stop_ambient()
                 if self.controller._game_task is not None:
                     await self.controller.stop_game()
                 if self.controller._freeplay_task is not None:

@@ -9,6 +9,7 @@ from collections.abc import Awaitable, Callable
 from cozmo_desktop.ai.conversation import ConversationService
 from cozmo_desktop.ai.local_chat import ChatTurn
 from cozmo_desktop.ai.providers.ollama import OllamaProvider
+from cozmo_desktop.face.expressions import render_face
 from cozmo_desktop.robot.base import RobotBackend, RobotError
 from cozmo_desktop.robot.simulator import MAX_SPEED, bounded
 from cozmo_desktop.services.games import GAME_NAMES, GameDirector, GameState
@@ -32,6 +33,8 @@ class RobotController:
         self.closing = False
         self._stop_epoch = 0
         self._freeplay_task: asyncio.Task[None] | None = None
+        self._ambient_task: asyncio.Task[None] | None = None
+        self.code_mode = False
         self._spontaneous_task: asyncio.Task[None] | None = None
         self.freeplay_allows_motion = False
         self._game_task: asyncio.Task[None] | None = None
@@ -62,6 +65,8 @@ class RobotController:
             return
         if name in self._tasks and not self._tasks[name].done():
             return
+        if name != "camera" and self._ambient_task is not None:
+            self._ambient_task.cancel()
         if name != "camera" and self.code_lab.active:
             self.code_lab.cancel()
             self._schedule_stop()
@@ -85,6 +90,8 @@ class RobotController:
             async with asyncio.timeout(40 if name == "chat" else 15):
                 if self._stop_task is not None and not self._stop_task.done():
                     await asyncio.shield(self._stop_task)
+                if name != "camera" and self._ambient_task is not None:
+                    await asyncio.gather(self._ambient_task, return_exceptions=True)
                 if name not in ("camera", "freeplay", "game") and self._freeplay_task:
                     await asyncio.gather(self._freeplay_task, return_exceptions=True)
                 if name not in ("camera", "game") and self._game_task:
@@ -129,6 +136,63 @@ class RobotController:
                         self.message = (
                             "Conversation ended; Freeplay needs to be restarted manually."
                         )
+            self.start_ambient()
+
+    def start_ambient(self) -> None:
+        """Keep eyes and sounds alive outside Freeplay without granting wheel motion."""
+        from cozmo_desktop.services.personality import PersonalityDirector
+
+        state = self.backend.state
+        if (
+            self.closing
+            or self.latched
+            or not state.connected
+            or state.freeplay
+            or self.code_mode
+            or self.code_lab.active
+            or self._tasks
+            or (self._game_task is not None and not self._game_task.done())
+            or (self._ambient_task is not None and not self._ambient_task.done())
+        ):
+            return
+        director = PersonalityDirector(self.backend)
+        self._ambient_task = asyncio.create_task(director.run(ambient=True))
+        self._ambient_task.add_done_callback(self._ambient_finished)
+
+    def _ambient_finished(self, task: asyncio.Task[None]) -> None:
+        if task.cancelled():
+            return
+        error = task.exception()
+        if error is not None and not self.closing:
+            logger.error("ambient_failed error_type=%s", type(error).__name__)
+            self.message = "Cozmo's idle reactions paused. Robot controls remain available."
+
+    async def stop_ambient(self) -> None:
+        if self._ambient_task is not None:
+            self._ambient_task.cancel()
+            await asyncio.gather(self._ambient_task, return_exceptions=True)
+            self._ambient_task = None
+
+    async def wake_up(self) -> None:
+        """Original eyes/sound wake sequence; a charger never grants wheel motion."""
+        if not self.backend.state.connected:
+            raise RobotError("Connect Cozmo first.")
+        await self.stop_ambient()
+        try:
+            await self.backend.display_face(render_face("Sleepy"), "Sleepy")
+            await self.backend.play_sound("sleepy")
+            await asyncio.sleep(0.2)
+            if not self.latched and self.backend.state.connected:
+                await self.backend.display_face(render_face("Curious"), "Curious")
+                await self.backend.play_sound("happy")
+        except RobotError as exc:
+            logger.warning("wake_effect_unavailable error_type=%s", type(exc).__name__)
+        self.message = (
+            "Cozmo is awake on the charger. Automatic undocking is not enabled."
+            if self.backend.state.on_charger
+            else "Cozmo is awake and looking around."
+        )
+        self.start_ambient()
 
     async def send_chat(self, text: str, model: str, *, spontaneous: bool = False) -> None:
         from cozmo_desktop.face.expressions import NAMES, render_face
@@ -234,6 +298,8 @@ class RobotController:
 
     def _cancel_commands(self) -> None:
         self.code_lab.cancel()
+        if self._ambient_task is not None and not self._ambient_task.done():
+            self._ambient_task.cancel()
         current = asyncio.current_task()
         for task in tuple(self._tasks.values()):
             if task is not current:
@@ -248,6 +314,7 @@ class RobotController:
     async def start_game(self, name: str) -> None:
         if name not in GAME_NAMES:
             raise RobotError("Unknown Power Cube game.")
+        await self.stop_ambient()
         if self._game_task is not None and not self._game_task.done():
             await self.stop_game()
         if self._freeplay_task is not None and not self._freeplay_task.done():
@@ -268,6 +335,8 @@ class RobotController:
             logger.error("game_failed error_type=%s", type(error).__name__)
             self.message = "Game stopped after a cube or robot error. Controls are locked."
             self.emergency_stop(preserve_message=True)
+        else:
+            self.start_ambient()
 
     async def stop_game(self) -> None:
         if self._game_task is not None:
@@ -280,8 +349,16 @@ class RobotController:
         from cozmo_desktop.services.personality import PersonalityDirector
 
         state = self.backend.state
-        if allow_movement and (not state.motors_enabled or state.surface_mode != "floor"):
+        if allow_movement and (
+            not state.motors_enabled
+            or state.surface_mode != "floor"
+            or state.cliff_detected
+            or state.picked_up
+            or state.falling
+            or state.on_charger
+        ):
             raise RobotError("Self-directed movement requires enabled motors on a clear floor.")
+        await self.stop_ambient()
         await self.backend.enable_freeplay()
         self.freeplay_allows_motion = allow_movement
         director = PersonalityDirector(self.backend)
@@ -340,6 +417,7 @@ class RobotController:
             await asyncio.gather(self._freeplay_task, return_exceptions=True)
             self._freeplay_task = None
         await self.backend.stop()
+        self.start_ambient()
 
     def emergency_stop(self, *, preserve_message: bool = False) -> None:
         self._stop_epoch += 1
@@ -352,6 +430,8 @@ class RobotController:
     def stop_motion(self) -> None:
         self._cancel_commands()
         self._schedule_stop()
+        if self._stop_task is not None:
+            self._stop_task.add_done_callback(lambda _task: self.start_ambient())
 
     def _schedule_stop(self) -> None:
         if self._stop_task is None or self._stop_task.done():
@@ -381,6 +461,7 @@ class RobotController:
         if epoch == self._stop_epoch and not self.closing:
             self.latched = False
             self.message = "Controls ready. Hold a direction to drive."
+            self.start_ambient()
 
     async def drive(self, left: float, right: float) -> None:
         if self.latched or self.closing:
@@ -394,6 +475,7 @@ class RobotController:
 
     async def disconnect(self) -> None:
         self._cancel_commands()
+        await self.stop_ambient()
         if self._freeplay_task is not None:
             await asyncio.gather(self._freeplay_task, return_exceptions=True)
         if self._game_task is not None:
@@ -407,6 +489,7 @@ class RobotController:
         epoch = self._stop_epoch
         self.latched = True
         self._cancel_commands()
+        await self.stop_ambient()
         await asyncio.gather(*tuple(self._tasks.values()), return_exceptions=True)
         if self._freeplay_task is not None:
             await asyncio.gather(self._freeplay_task, return_exceptions=True)
@@ -431,6 +514,7 @@ class RobotController:
         self.closing = True
         self.latched = True
         self._cancel_commands()
+        await self.stop_ambient()
         await asyncio.gather(*tuple(self._tasks.values()), return_exceptions=True)
         if self._freeplay_task is not None:
             await asyncio.gather(self._freeplay_task, return_exceptions=True)

@@ -8,7 +8,7 @@ from cozmo_desktop.face.expressions import render_face
 from cozmo_desktop.robot.base import CubeState, RobotError
 from cozmo_desktop.robot.simulator import SimulatorBackend
 from cozmo_desktop.services.controller import RobotController
-from cozmo_desktop.services.personality import PersonalityDirector, safe_to_move
+from cozmo_desktop.services.personality import PersonalityDirector, safe_to_move, safe_to_pose
 
 
 class VirtualClock:
@@ -58,6 +58,59 @@ def test_event_driven_mood_and_safety_gate():
         assert director._event_mood(moved) == "Neutral"
     for mode in ("table", "unknown"):
         assert not safe_to_move(replace(state, surface_mode=mode))
+        assert not safe_to_pose(replace(state, surface_mode=mode))
+
+
+async def test_ambient_blinks_and_sounds_without_freeplay_or_wheel_motion(monkeypatch):
+    robot = SimulatorBackend()
+    await robot.connect()
+    clock = VirtualClock()
+    reached = asyncio.Event()
+    clock.hook = lambda: reached.set() if clock.now >= 108 else None
+    wheels = []
+    frames = []
+    original_display = robot.display_face
+
+    async def display(frame, name="Custom"):
+        frames.append(frame.tobytes())
+        await original_display(frame, name)
+
+    async def drive(left, right):
+        wheels.append((left, right))
+
+    monkeypatch.setattr(robot, "display_face", display)
+    monkeypatch.setattr(robot, "drive", drive)
+    director = PersonalityDirector(robot, rng=random.Random(4), clock=clock.time, pause=clock.pause)
+    task = asyncio.create_task(director.run(ambient=True))
+    async with asyncio.timeout(2):
+        await reached.wait()
+    task.cancel()
+    await asyncio.gather(task, return_exceptions=True)
+    assert len(set(frames)) > 1
+    assert any("vocalization" in event for event in robot.events)
+    assert not wheels and not robot.state.freeplay
+    await robot.disconnect()
+
+
+async def test_grumpy_lift_gesture_requires_safe_floor(monkeypatch):
+    robot = SimulatorBackend()
+    await robot.connect()
+    director = PersonalityDirector(robot, pause=lambda _seconds: asyncio.sleep(0))
+    heights = []
+    original_lift = robot.set_lift_height
+
+    async def lift(height):
+        heights.append(height)
+        await original_lift(height)
+
+    monkeypatch.setattr(robot, "set_lift_height", lift)
+    await director._grumpy_arm()
+    assert heights == [0.35, 0.08]
+    assert "Simulated vocalization: grumble" in robot.events
+    robot._state = replace(robot.state, picked_up=True)
+    await director._grumpy_arm()
+    assert heights == [0.35, 0.08]
+    await robot.disconnect()
 
 
 async def test_spontaneous_moods_blinks_sounds_and_floor_roaming(monkeypatch):

@@ -139,12 +139,16 @@ pages or deactivating the window stops movement. The simulator independently sto
 unrenewed wheel commands after 350 ms, checked every 50 ms. This is software simulation,
 not a claim of a tested physical safety mechanism.
 
-Home's Freeplay is an original personality service, not the original mobile app's
-Freeplay engine. Its eyes and sounds can run while stationary. Slow self-directed
-movement is available only after choosing **Clear floor**, enabling motors and
-checking the separate movement option. Table mode does not permit wheel movement:
+Home's personality service is an original implementation, not the original mobile
+app's Freeplay engine. Eyes, blinking and occasional sounds start automatically
+after connection, without pressing Freeplay. Small head/lift gestures require motor
+arming and a clear floor. To let Cozmo drive by himself, choose **Clear floor**,
+enable motors and check **Let Cozmo roam on a clear floor**; this starts roaming
+without a separate Freeplay click. Table mode does not permit wheel movement:
 the cliff sensor has not been physically validated for edge safety. No docking or
-face identification is implemented. Cube battery and orientation remain unknown.
+face identification is implemented. Cozmo does not automatically leave his charger.
+Manual drive speed is adjustable on Control and capped at 40 mm/s on the
+experimental direct backend. Cube battery and orientation remain unknown.
 
 ## AI configuration and Cozmo.AI integration
 

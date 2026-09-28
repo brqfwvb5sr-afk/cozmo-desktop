@@ -25,6 +25,16 @@ def safe_to_move(state: RobotState) -> bool:
     )
 
 
+def safe_to_pose(state: RobotState) -> bool:
+    """A head/lift gesture needs the same physical arming and surface checks."""
+    return (
+        state.connected
+        and state.motors_enabled
+        and state.surface_mode == "floor"
+        and not any(getattr(state, flag) for flag in HAZARDS)
+    )
+
+
 class PersonalityDirector:
     def __init__(
         self,
@@ -51,6 +61,7 @@ class PersonalityDirector:
         self.next_head = 0.0
         self.next_roam = 0.0
         self.next_invite = 0.0
+        self.next_arm = 0.0
         self.invite_cube = 0
         self.invite_until = 0.0
         self.invite_succeeded = False
@@ -115,16 +126,26 @@ class PersonalityDirector:
                 except RobotError:
                     pass  # The independent worker also locks/halts on sensor faults.
 
-    async def run(self, *, allow_movement: bool = False) -> None:
+    async def _grumpy_arm(self) -> None:
+        """A small original lift gesture; never use wheel commands or slam the lift."""
+        if not safe_to_pose(self.backend.state):
+            return
+        await self.backend.set_lift_height(0.35)
+        await self.pause(0.18)
+        if safe_to_pose(self.backend.state):
+            await self.backend.set_lift_height(0.08)
+        await self.backend.play_sound("grumble")
+
+    async def run(self, *, allow_movement: bool = False, ambient: bool = False) -> None:
         now = self.clock()
-        self.next_mood = now
+        self.next_mood = now + 4 if ambient else now
         self.next_blink = now + 3
         self.next_sound = now + 5
         self.next_head = now + 4
         self.next_roam = now + 4
         self.next_invite = now + 8
         try:
-            while self.backend.state.connected and self.backend.state.freeplay:
+            while self.backend.state.connected and (ambient or self.backend.state.freeplay):
                 state = self.backend.state
                 now = self.clock()
                 event = self._event_mood(state)
@@ -198,9 +219,12 @@ class PersonalityDirector:
                     await self.backend.play_sound(sound)
                     self.next_sound = now + self.rng.uniform(12, 22)
                 if now >= self.next_head:
-                    if safe_to_move(state):
+                    if safe_to_pose(state):
                         await self.backend.set_head_angle(self.rng.choice((-5, 5, 12)))
                     self.next_head = now + self.rng.uniform(7, 12)
+                if self.mood == "Angry" and now >= self.next_arm and safe_to_pose(state):
+                    await self._grumpy_arm()
+                    self.next_arm = now + self.rng.uniform(25, 45)
                 if allow_movement and now >= self.next_roam and not self.invite_cube:
                     if safe_to_move(state):
                         await self._roam()
@@ -216,4 +240,5 @@ class PersonalityDirector:
                     await self.backend.set_cube_color(self.invite_cube, "off")
                 except RobotError:
                     pass
-            await self.backend.disable_freeplay()
+            if not ambient:
+                await self.backend.disable_freeplay()

@@ -43,6 +43,27 @@ async def connect_control(window):
     QApplication.processEvents()
 
 
+async def test_connect_starts_ambient_and_roaming_needs_floor_opt_in(window):
+    window.connect_button.click()
+    await asyncio.sleep(0.05)
+    assert window.controller.backend.state.connected
+    assert not window.controller.backend.state.freeplay
+    assert window.controller._ambient_task is not None
+    assert not window.controller._ambient_task.done()
+
+    window.freeplay_movement.setChecked(True)
+    await asyncio.sleep(0.05)
+    assert window.controller.backend.state.freeplay
+    assert window.controller.freeplay_allows_motion
+
+    window.stop_button.click()
+    await asyncio.sleep(0.05)
+    assert window.controller.latched
+    assert window.controller.backend.state.left_speed == 0
+    assert window.controller.backend.state.right_speed == 0
+    assert window.controller._ambient_task is None or window.controller._ambient_task.done()
+
+
 async def test_code_lab_browser_fallback_keeps_desktop_alive(window, monkeypatch):
     opened = []
     monkeypatch.setattr(window_module, "embed_code_lab", lambda: False)
