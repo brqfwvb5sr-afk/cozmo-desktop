@@ -164,6 +164,17 @@ async def test_local_bridge_token_schema_and_static(controller, tmp_path):
             b"{",
         )
         assert b"400 Bad Request" in malformed
+        denied_stop = await request(server, "POST", "/api/emergency-stop")
+        assert b"403 Forbidden" in denied_stop and not controller.latched
+        emergency = await request(
+            server,
+            "POST",
+            "/api/emergency-stop",
+            {"X-Code-Token": server.token},
+        )
+        await asyncio.sleep(0.01)
+        assert b"200 OK" in emergency and controller.latched
+        assert controller.backend.state.left_speed == 0
     finally:
         await server.close()
 

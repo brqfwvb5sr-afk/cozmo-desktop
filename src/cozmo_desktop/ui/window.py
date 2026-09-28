@@ -1,10 +1,12 @@
 import asyncio
+import os
+import sys
 from datetime import datetime
 from pathlib import Path
 
 from PIL import Image
 from PySide6.QtCore import QEvent, QObject, Qt, QTimer, QUrl
-from PySide6.QtGui import QCloseEvent, QKeyEvent
+from PySide6.QtGui import QCloseEvent, QDesktopServices, QKeyEvent
 from PySide6.QtWidgets import (
     QAbstractSpinBox,
     QApplication,
@@ -61,6 +63,15 @@ PAGES = (
     "Code",
 )
 KEYS: dict[int, str] = {Qt.Key.Key_W: "w", Qt.Key.Key_A: "a", Qt.Key.Key_S: "s", Qt.Key.Key_D: "d"}
+
+
+def embed_code_lab() -> bool:
+    """Avoid a native QtWebEngine abort in Linux desktop processes by default."""
+    return sys.platform != "linux" or os.environ.get("COZMO_CODE_EMBEDDED") == "1"
+
+
+def open_code_url(url: QUrl) -> bool:
+    return QDesktopServices.openUrl(url)
 
 
 class MainWindow(QMainWindow):
@@ -904,6 +915,10 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.code_status)
         self.code_live_status = label("Cozmo: Disconnected · Safety: Waiting", "muted", True)
         layout.addWidget(self.code_live_status)
+        self.code_open_button = QPushButton("Open Code Lab in browser")
+        self.code_open_button.clicked.connect(self.open_code_browser)
+        self.code_open_button.hide()
+        layout.addWidget(self.code_open_button)
         self.code_container = QVBoxLayout()
         layout.addLayout(self.code_container, 1)
         return page
@@ -915,23 +930,39 @@ class MainWindow(QMainWindow):
             lambda: Path(__file__).resolve().parents[1] / "code_lab" / "static"
         )
         try:
-            from PySide6.QtWebEngineWidgets import QWebEngineView
-
             server = CodeLabServer(self.controller.code_lab, static_dir)
             await server.start()
+            self.code_server = server
+            if not embed_code_lab():
+                self.code_open_button.show()
+                self.open_code_browser()
+                return
+            from PySide6.QtWebEngineWidgets import QWebEngineView
+
             view = QWebEngineView(self)
             self.code_container.addWidget(view)
             self.code_view = view
-            self.code_server = server
             view.setUrl(QUrl(server.url))
             self.code_status.setText(
                 "Local editor ready. Connect Cozmo or the simulator; STOP stays above."
             )
-        except (ImportError, FileNotFoundError, OSError) as exc:
+        except (ImportError, FileNotFoundError, OSError, RuntimeError) as exc:
             self.code_status.setText(
                 "Code Lab editor is not installed. Build Scratch and install QtWebEngine."
             )
             self.controller.message = str(exc)
+
+    def open_code_browser(self) -> None:
+        if self.code_server is None:
+            return
+        if open_code_url(QUrl(self.code_server.url)):
+            self.code_status.setText(
+                "Code Lab opened in your browser. Emergency STOP is also inside the editor."
+            )
+        else:
+            self.code_status.setText(
+                "No browser opened. Install or select a default browser on this computer."
+            )
 
     def release_controls(self) -> None:
         self.keys.clear()

@@ -40,8 +40,12 @@ def main(source: Path) -> None:
     html = (source / "index.html").read_text(encoding="utf-8")
     html = html.replace("Scratch 3.0 GUI", "Cozmo Code Lab")
     html = html.replace('href="static/favicon.ico"', 'href="code-lab-logo.svg"')
+    if html.count("</body>") != 1:
+        raise RuntimeError("Scratch index.html changed; cannot insert emergency control")
+    html = html.replace("</body>", '<script src="code-lab-shell.js"></script></body>')
     (DESTINATION / "index.html").write_text(html, encoding="utf-8")
     shutil.copyfile(ROOT / "frontend/scratch/code-lab-logo.svg", DESTINATION / "code-lab-logo.svg")
+    shutil.copyfile(ROOT / "frontend/scratch/code-lab-shell.js", DESTINATION / "code-lab-shell.js")
     shutil.copyfile(source.parents[2] / "LICENSE", DESTINATION / "SCRATCH-LICENSE.txt")
     shutil.copyfile(source.parents[2] / "TRADEMARK", DESTINATION / "SCRATCH-TRADEMARK.txt")
     shutil.copyfile(

@@ -51,5 +51,10 @@ see [OLLAMA.md](OLLAMA.md). Start with `bash scripts/start-primtux.sh`.
 PrimTux-specific `.deb` packaging is **pending inspection** of the actual base and
 target architecture. The Ubuntu 24.04 `.deb` must not be assumed compatible.
 The source tree includes a prebuilt Code Lab runtime bundle, so normal users should
-not need Node/npm. The exact PrimTux QtWebEngine and graphics behavior remains
-unverified. See [Scratch architecture](SCRATCH_ARCHITECTURE.md).
+not need Node/npm. Code Lab now opens the local editor in the system browser on
+Linux. A PrimTux user reported that the earlier embedded QtWebEngine path closed
+the entire application; no crash log or exact PrimTux version is available yet.
+Install/select a local default browser if Code does not open one, and use the
+**Open Code Lab in browser** retry button. The browser editor includes its own
+emergency STOP, while the desktop STOP remains available. The underlying QtWebEngine
+and graphics compatibility are still unverified. See [Scratch architecture](SCRATCH_ARCHITECTURE.md).

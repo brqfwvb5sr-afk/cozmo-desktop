@@ -15,8 +15,8 @@ Cozmo or PrimTux test.
 | Autonomous floor movement | ⚠️ experimental | ⚠️ experimental |
 | Table-edge driving | 🔒 disabled | 🔒 disabled |
 | `.deb` installation | ⚠️ target base unknown | ✅ Ubuntu 24.04 CI only |
-| Code Lab editor / QtWebEngine | ⚠️ target not tested | ⚠️ built and browser-tested on Windows; Linux CI pending |
+| Code Lab editor / browser | ⚠️ Linux browser fallback implemented; target retest pending | ⚠️ Linux CI tests passed; Code page retest pending |
 | Code Lab simulator commands | ⚠️ target not tested | ⚠️ automated simulator test only |
-| Scratch `.sb3` save/reopen | ⚠️ target not tested | ⚠️ browser validation pending |
+| Scratch `.sb3` save/reopen | ⚠️ target not tested | ⚠️ Windows browser round-trip tested; Linux retest pending |
 
 See [PrimTux inventory](PRIMTUX.md) and [physical validation](PHYSICAL_VALIDATION.md).

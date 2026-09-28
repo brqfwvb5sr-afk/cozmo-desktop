@@ -106,6 +106,9 @@ class CodeLabServer:
                 return self._response(403, b'{"error":"Code Lab session expired."}')
             if path == "/api/state" and method == "GET":
                 return self._json(200, {"status": "ok", "state": self.commands.state()})
+            if path == "/api/emergency-stop" and method == "POST":
+                self.commands.controller.emergency_stop()
+                return self._json(200, {"status": "ok", "result": None})
             if path != "/api/command" or method != "POST":
                 return self._response(404, b'{"error":"Unknown endpoint."}')
             if headers.get("content-type", "").split(";")[0] != "application/json":

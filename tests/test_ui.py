@@ -14,6 +14,7 @@ from cozmo_desktop.robot.base import RobotError
 from cozmo_desktop.robot.simulator import SimulatorBackend
 from cozmo_desktop.services.controller import RobotController
 from cozmo_desktop.storage.settings import Settings
+from cozmo_desktop.ui import window as window_module
 from cozmo_desktop.ui.window import MainWindow
 
 
@@ -40,6 +41,21 @@ async def connect_control(window):
     window.refresh()
     window.control.setFocus()
     QApplication.processEvents()
+
+
+async def test_code_lab_browser_fallback_keeps_desktop_alive(window, monkeypatch):
+    opened = []
+    monkeypatch.setattr(window_module, "embed_code_lab", lambda: False)
+    monkeypatch.setattr(window_module, "open_code_url", lambda url: opened.append(url) or True)
+    window.navigation.setCurrentRow(10)
+    await asyncio.sleep(0.1)
+    assert window.code_server is not None
+    assert window.code_view is None
+    assert window.code_open_button.isVisible()
+    assert len(opened) == 1 and opened[0].toString().startswith("http://127.0.0.1:")
+    window.stop_button.click()
+    await asyncio.sleep(0.01)
+    assert window.controller.latched
 
 
 async def test_buttons_drive_release_posture_speech(window):

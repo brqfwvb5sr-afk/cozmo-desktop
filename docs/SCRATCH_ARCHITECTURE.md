@@ -4,7 +4,7 @@ The editor is a production build of [Scratch Foundation's `scratch-editor`](http
 
 ```
 Qt Code page + persistent STOP
-  -> embedded QtWebEngine (loopback URL)
+  -> system browser on Linux (embedded QtWebEngine on Windows)
   -> upstream Scratch GUI and VM + Cozmo extension
   -> same-origin JSON HTTP on 127.0.0.1 with random session token
   -> ScratchCommands (allowlist, bounds, one active command)
@@ -12,7 +12,17 @@ Qt Code page + persistent STOP
   -> existing simulator or direct backend (drive lease and hardware safety)
 ```
 
-The server binds an ephemeral port on `127.0.0.1`, requires an exact loopback Host and same Origin, and requires an `X-Code-Token` on every API request. The token is passed only to the local editor URL for that launch; it is not saved in `.sb3`. API input is capped at 16 KiB. Only `GET /api/state` and `POST /api/command` exist. Every command is validated before reaching the existing backend. No Scratch code can send raw wheel speeds, robot packets, shell commands or a safety-disable command. The Content Security Policy blocks cross-origin connections by the bundled editor; Scratch's runtime requires inline/eval script allowances.
+The server binds an ephemeral port on `127.0.0.1`, requires an exact loopback Host and same Origin, and requires an `X-Code-Token` on every API request. The token is passed only to the local editor URL for that launch; it is not saved in `.sb3`. API input is capped at 16 KiB. Only `GET /api/state`, `POST /api/command` and `POST /api/emergency-stop` exist. Every robot command is validated before reaching the existing backend; the emergency endpoint latches the existing desktop STOP. No Scratch code can send raw wheel speeds, robot packets, shell commands or a safety-disable command. The Content Security Policy blocks cross-origin connections by the bundled editor; Scratch's runtime requires inline/eval script allowances.
+
+On Linux, opening Code starts the server and opens the same editor URL in the
+system browser. This avoids a native QtWebEngine process failure observed by a
+PrimTux user. The desktop process stays available for its STOP button; a second
+project-owned emergency button is fixed above the browser editor and uses the
+token-protected local emergency endpoint. The editor's ordinary Scratch stop icon
+only stops scripts; it is not the emergency latch. If no default browser opens,
+Code shows a retry button and a clear error. Embedded QtWebEngine can be opted into
+on Linux with `COZMO_CODE_EMBEDDED=1` for supervised compatibility testing, but is
+not the default until the target machine has been validated.
 
 `POST /api/command` accepts `{"command":"head","arguments":{"angle":20}}`; it returns `{"status":"ok","result":null}` or `{"status":"error","error":"..."}`. Supported commands and ranges are in [SCRATCH_EXTENSION.md](SCRATCH_EXTENSION.md). The browser polls `GET /api/state` every 250 ms for connection, safety and cube events. This is a local structured state snapshot, never camera frames.
 

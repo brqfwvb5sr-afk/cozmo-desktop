@@ -31,8 +31,10 @@ application; its captures are attached to each successful Actions run.*
 - Cozmo Code Lab: real Scratch GUI/VM, standard blocks and `.sb3` open/save,
   custom Cozmo movement, face, speech, cube, event, sensor and optional AI blocks.
   The editor bundle and robot bridge run on loopback with no normal-use Internet
-  dependency. Cozmo commands use the existing safety controller; the native STOP
-  remains visible. Scratch hardware behavior has **not** been physically validated.
+  dependency. On Linux, Code opens the local editor in the default browser to keep
+  the desktop app running if QtWebEngine is incompatible; both windows have an
+  emergency STOP. Cozmo commands use the existing safety controller. Scratch
+  hardware behavior has **not** been physically validated.
   Seven original [lesson projects](examples/scratch) open with Scratch's normal
   **File → Load from your computer** action.
 - Connect/disconnect a simulated Cozmo; inspect battery, pose, wheels, head, lift,

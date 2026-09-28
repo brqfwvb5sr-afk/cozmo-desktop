@@ -11,6 +11,9 @@ The runtime bundle is about 100 MB uncompressed on this Windows build; PrimTux
 startup/RAM measurements are pending.
 Seven original `.sb3` lessons ship in `/usr/share/cozmo-desktop/examples/` in
 the Ubuntu package and are also available in the source tree.
+On Linux, Code Lab opens in the user's default browser on `127.0.0.1`; the
+Ubuntu package recommends `xdg-utils` for desktop URL opening. No Internet
+service or Node.js is needed at runtime.
 
 PrimTux is the primary target, but the owner's variant, base libraries and CPU
 architecture are not yet inspected. Do not install the Ubuntu 24.04 `.deb` on PrimTux

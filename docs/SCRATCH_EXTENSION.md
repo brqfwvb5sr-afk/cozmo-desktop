@@ -10,7 +10,7 @@ Expressions are restricted to the procedural faces in the app. Animations come o
 
 The event poll uses the existing `RobotState`, including cube tap/move sequence counters. A connected cube is **not** called visually seen. Cube-seen and cube-visible blocks remain pending because the direct backend does not expose reliable visual cube detection. Battery can be unknown in direct mode, so the reporter returns 0 when unavailable; a future block should distinguish unknown from an empty battery.
 
-The Scratch green flag starts Scratch scripts; it does not arm physical motors. The native desktop STOP remains above the embedded editor and latches robot control even if Scratch scripts keep running visually. Changing pages or manual input cancels Scratch robot actions.
+The Scratch green flag starts Scratch scripts; it does not arm physical motors. The desktop STOP remains available and latches robot control even if Scratch scripts keep running visually. The Linux browser view also has a fixed emergency STOP button above the editor. Changing pages or manual input cancels Scratch robot actions.
 
 ## Original lesson projects
 
