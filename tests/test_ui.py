@@ -344,3 +344,20 @@ async def test_stationary_cliff_trace_ui_labels_and_exports(window, monkeypatch,
     assert data["samples"][-1]["label"] == "front edge"
     assert data["samples"][-1]["raw"] == [100, 20, 30, 40]
     assert not window.cliff_trace.active
+
+
+async def test_home_explains_idle_life_and_output_without_false_claims(window):
+    window.connect_button.click()
+    await asyncio.sleep(0.4)  # Wake-up face/sound sequence, then idle life at once.
+    window.refresh()
+    assert window.life_status.text().startswith("Idle life is running")
+    assert window.activity.text() == "Cozmo is awake · eyes and sounds"
+    assert "Last face sent" in window.output_status.text()
+    assert "simulator only" in window.output_status.text()
+    window.stop_button.click()
+    await asyncio.sleep(0.05)
+    window.refresh()
+    assert "Paused by STOP" in window.life_status.text()
+    assert window.activity.text() == "Ready when you are"
+    window.navigation.setCurrentRow(1)
+    assert "Simulator cap 80 mm/s" in window.control.limit_note.text()

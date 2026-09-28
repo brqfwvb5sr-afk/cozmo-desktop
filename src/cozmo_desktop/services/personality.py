@@ -5,14 +5,21 @@ uses upstream animation assets and never grants itself motor permissions.
 """
 
 import asyncio
+import logging
 import random
 import time
 from collections.abc import Awaitable, Callable
 
-from cozmo_desktop.face.expressions import render_face
-from cozmo_desktop.robot.base import RobotBackend, RobotError, RobotState
+from cozmo_desktop.face.expressions import NAMES, render_face
+from cozmo_desktop.robot.base import NotConnectedError, RobotBackend, RobotError, RobotState
 
 HAZARDS = ("cliff_detected", "picked_up", "falling", "on_charger")
+# A single refused face/sound is skipped; this many in a row ends the run so the
+# controller can report it and retry later instead of flooding the robot.
+MAX_OUTPUT_FAILURES = 3
+GLANCES = (-6, -3, 0, 3, 6)
+
+logger = logging.getLogger(__name__)
 
 
 def safe_to_move(state: RobotState) -> bool:
@@ -65,6 +72,35 @@ class PersonalityDirector:
         self.invite_cube = 0
         self.invite_until = 0.0
         self.invite_succeeded = False
+        self.next_glance = 0.0
+        self.recovered = False
+        self.output_failures = 0
+        self.problem = ""
+
+    async def _output(self, action: Awaitable[None]) -> bool:
+        """Send one face/sound/cube-light; a refusal is reported, never fatal alone."""
+        try:
+            await action
+        except NotConnectedError:
+            raise
+        except RobotError as exc:
+            self.output_failures += 1
+            self.problem = str(exc)
+            logger.warning(
+                "personality_output_refused count=%d detail=%s", self.output_failures, exc
+            )
+            if self.output_failures >= MAX_OUTPUT_FAILURES:
+                raise
+            return False
+        self.output_failures = 0
+        return True
+
+    async def _face(self, *, blink: bool = False) -> bool:
+        frame = render_face(self.mood, gaze=self.gaze, blink=blink)
+        return await self._output(self.backend.display_face(frame, self.mood))
+
+    async def _sound(self, kind: str) -> bool:
+        return await self._output(self.backend.play_sound(kind))
 
     def _event_mood(self, state: RobotState) -> str | None:
         taps = tuple(c.tap_sequence for c in state.cubes)
@@ -91,6 +127,7 @@ class PersonalityDirector:
                 return hazard_mood
             return None
         if self.hazard_mood is not None:
+            self.recovered = self.hazard_mood == "Surprised"
             self.hazard_mood = None
             return "Neutral"
         if tapped:
@@ -134,17 +171,26 @@ class PersonalityDirector:
         await self.pause(0.18)
         if safe_to_pose(self.backend.state):
             await self.backend.set_lift_height(0.08)
-        await self.backend.play_sound("grumble")
+        await self._sound("grumble")
 
     async def run(self, *, allow_movement: bool = False, ambient: bool = False) -> None:
         now = self.clock()
         self.next_mood = now + 4 if ambient else now
         self.next_blink = now + 3
+        self.next_glance = now + 2
         self.next_sound = now + 5
         self.next_head = now + 4
         self.next_roam = now + 4
         self.next_invite = now + 8
         try:
+            start = self.backend.state
+            if start.connected and not any(getattr(start, flag) for flag in HAZARDS):
+                # Redraw at once: STOP clears PyCozmo's queued frames, so never leave
+                # Cozmo with a stale or blank face until the first timer fires. A hazard
+                # face is drawn by the first loop pass instead.
+                expression = self.backend.state.expression
+                self.mood = expression if expression in NAMES else "Neutral"
+                await self._face()
             while self.backend.state.connected and (ambient or self.backend.state.freeplay):
                 state = self.backend.state
                 now = self.clock()
@@ -156,10 +202,10 @@ class PersonalityDirector:
                     hazardous = any(getattr(state, flag) for flag in HAZARDS)
                     if now >= self.invite_until or not cube_connected or hazardous:
                         if cube_connected:
-                            await self.backend.set_cube_color(self.invite_cube, "off")
+                            await self._output(self.backend.set_cube_color(self.invite_cube, "off"))
                         self.invite_cube = 0
                     elif self.invite_cube in self.recent_taps and not self.invite_succeeded:
-                        await self.backend.set_cube_color(self.invite_cube, "green")
+                        await self._output(self.backend.set_cube_color(self.invite_cube, "green"))
                         self.invite_succeeded = True
                         self.invite_until = now + 0.6
                         event = "Happy"
@@ -174,8 +220,8 @@ class PersonalityDirector:
                         self.invite_succeeded = False
                         self.invite_until = now + 4
                         self.next_invite = now + self.rng.uniform(22, 36)
-                        await self.backend.set_cube_color(self.invite_cube, "blue")
-                        await self.backend.play_sound("question")
+                        await self._output(self.backend.set_cube_color(self.invite_cube, "blue"))
+                        await self._sound("question")
                         invitation_announced = True
                         self.next_sound = max(self.next_sound, now + 4)
                         event = "Curious"
@@ -184,27 +230,31 @@ class PersonalityDirector:
                         ("Neutral", "Curious", "Happy", "Sleepy", "Confused", "Angry")
                     )
                     self.gaze = self.rng.choice((-5, 0, 5))
-                    await self.backend.display_face(
-                        render_face(self.mood, gaze=self.gaze), self.mood
-                    )
+                    await self._face()
                     self.next_mood = now + self.rng.uniform(4, 9)
-                if (
-                    event in ("Happy", "Curious")
-                    and not invitation_announced
-                    and now >= self.next_reaction_sound
-                ):
-                    await self.backend.play_sound("happy" if event == "Happy" else "question")
+                    self.next_glance = max(self.next_glance, now + 1.5)
+                reaction = {"Happy": "happy", "Curious": "question"}.get(event or "")
+                if self.recovered and event == "Neutral":
+                    reaction = "chirp"  # Put back down: one short relieved sound.
+                self.recovered = False
+                if reaction and not invitation_announced and now >= self.next_reaction_sound:
+                    await self._sound(reaction)
                     self.next_reaction_sound = now + 1
                     self.next_sound = max(self.next_sound, now + 4)
                 if now >= self.next_blink:
-                    await self.backend.display_face(
-                        render_face(self.mood, gaze=self.gaze, blink=True), self.mood
-                    )
+                    await self._face(blink=True)
                     await self.pause(0.12)
-                    await self.backend.display_face(
-                        render_face(self.mood, gaze=self.gaze), self.mood
-                    )
+                    await self._face()
                     self.next_blink = now + self.rng.uniform(3, 7)
+                    self.next_glance = max(self.next_glance, now + 1)
+                elif now >= self.next_glance and not (
+                    state.cliff_detected or state.picked_up or state.falling
+                ):
+                    # Eyes-only look-around: no motor, so it also works on the charger.
+                    # A cliff/pickup keeps one steady face instead.
+                    self.gaze = self.rng.choice(tuple(g for g in GLANCES if g != self.gaze))
+                    await self._face()
+                    self.next_glance = now + self.rng.uniform(2.5, 6)
                 if now >= self.next_sound and not (
                     state.cliff_detected or state.picked_up or state.falling
                 ):
@@ -216,7 +266,7 @@ class PersonalityDirector:
                         "Confused": "question",
                         "Sleepy": "sleepy",
                     }.get(self.mood, "chirp")
-                    await self.backend.play_sound(sound)
+                    await self._sound(sound)
                     self.next_sound = now + self.rng.uniform(12, 22)
                 if now >= self.next_head:
                     if safe_to_pose(state):

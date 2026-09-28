@@ -105,6 +105,32 @@ Passwörter auszugeben. Eine passende Route allein beweist keine Roboterverbindu
   Nach Verbindungsfehlern erneut **Connect Cozmo** wählen. Nach Watchdog-, Pickup-,
   Lade- oder Klippenereignissen zusätzlich **Enable motors** betätigen.
 
+## Lebendigkeit und Diagnose auf Home
+
+Nach dem Verbinden zeigt Home zwei Zeilen:
+
+- *Idle life is running …* oder *Idle life is off.* mit Grund (z. B. STOP aktiv,
+  Code Lab offen, Spiel läuft, Freeplay läuft, gerade manuelles Fahren). Nach
+  manuellen Aktionen startet es nach etwa 2 Sekunden von selbst wieder.
+- *Last face sent … · last sound sent …*: wann das letzte Augenbild bzw. der letzte
+  Laut an PyCozmo übergeben wurde. *Cozmo confirms playback (N audio frames)* ist
+  Cozmos eigener Zähler abgespielter Audio-Frames (auch Stille); steigt N, kommt der
+  Augen-/Tonstrom am Roboter an. *stream … NOT running* bedeutet: neu verbinden.
+  *last refused …* nennt den zuletzt abgelehnten Befehl und den Grund.
+
+Technische Details stehen zusätzlich in `app.log` (`robot_command_rejected`,
+`personality_output_refused`, `ambient_failed`). Die Testabfolge steht in
+[PHYSICAL_VALIDATION.md](PHYSICAL_VALIDATION.md).
+
+## Warum manuelles Fahren langsamer ist als in der iPhone-App
+
+Das ist eine bewusste Softwaregrenze, kein Übertragungsproblem: Beim Wechsel auf die
+direkte Verbindung startet der Regler bei 20 mm/s; Schieber und Worker begrenzen auf
+40 mm/s. Cozmos Räder schaffen laut PyCozmo etwa 200 mm/s, die App nutzt deutlich
+mehr. Die Werte werden 1:1 in mm/s an `DriveWheels` übergeben (Beschleunigung
+100 mm/s²). Die 40-mm/s-Grenze bleibt, bis beaufsichtigte Bodentests Stoppweg und
+Reaktion nach STOP, Loslassen, Pickup und Verbindungsverlust belegen.
+
 ## Grenzen der Stop-Funktion
 
 Ein separater Prozess besitzt die UDP-Verbindung. Er prüft Fahrbefehle mit 350 ms

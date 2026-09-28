@@ -172,9 +172,23 @@ class PyCozmoTransport:
             self.client.cancel_anim()
             self.client.stop_all_motors()
 
-    def stop_motors(self) -> None:
-        if self.started:
-            self.client.stop_all_motors()
+    def stream_status(self) -> tuple[bool, int | None]:
+        """Is PyCozmo's 30 fps face/audio stream running, and what did Cozmo confirm?
+
+        Faces and sounds only reach Cozmo through this stream. The robot reports its
+        own played-audio-frame counter in AnimationState (silence frames included);
+        a counter that never rises means nothing from the stream arrives.
+        """
+        controller = self.client.anim_controller
+        thread = controller.thread
+        running = bool(
+            self.started
+            and controller.animations_enabled
+            and thread is not None
+            and thread.is_alive()
+        )
+        frames = getattr(self.client, "num_audio_frames_played", None)
+        return running, frames if type(frames) is int and frames > 0 else None
 
     def drive(self, left: float, right: float) -> None:
         # Upstream duration= is a host sleep, NOT firmware-side command expiry.

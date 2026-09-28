@@ -14,6 +14,7 @@ from .base import (
     CubeEvent,
     CubeState,
     NotConnectedError,
+    OutputActivity,
     RobotBackend,
     RobotError,
     RobotState,
@@ -70,6 +71,7 @@ class SimulatorBackend(RobotBackend):
             cubes=tuple(CubeState(n, connected=True) for n in range(1, 4)),
         )
         self._event("Simulation connected")
+        self._output = OutputActivity()
         self._ticker = asyncio.create_task(self._run())
 
     async def disconnect(self) -> None:
@@ -127,6 +129,9 @@ class SimulatorBackend(RobotBackend):
         if kind not in VOCALIZATIONS:
             raise RobotError("Unknown robot vocalization.")
         self._event(f"Simulated vocalization: {kind}")
+        self._output = replace(
+            self._output, sounds=self._output.sounds + 1, last_sound=time.monotonic()
+        )
 
     async def cube_lights(self, number: int) -> None:
         await self.set_cube_color(number, "green")
@@ -171,6 +176,9 @@ class SimulatorBackend(RobotBackend):
         self._face = frame.copy()
         self._state = replace(self._state, expression=name)
         self._event(f"Expression: {name}")
+        self._output = replace(
+            self._output, faces=self._output.faces + 1, last_face=time.monotonic()
+        )
 
     async def get_camera_frame(self) -> Image.Image:
         self._require_connection()

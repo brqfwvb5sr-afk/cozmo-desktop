@@ -13,9 +13,28 @@ from cozmo_desktop.face.expressions import render_face
 from cozmo_desktop.robot.base import RobotBackend, RobotError
 from cozmo_desktop.robot.simulator import MAX_SPEED, bounded
 from cozmo_desktop.services.games import GAME_NAMES, GameDirector, GameState
+from cozmo_desktop.services.personality import PersonalityDirector
 from cozmo_desktop.storage.settings import Settings
 
 logger = logging.getLogger(__name__)
+
+# Idle life waits this long after a manual/Code Lab/UI command before it resumes, so
+# it never fights a user who is still driving or posing Cozmo.
+AMBIENT_RESUME_DELAY = 2.0
+# After repeated refused faces/sounds, retry calmly instead of flooding the robot.
+AMBIENT_RETRY_DELAY = 10.0
+TASK_LABELS = {
+    "drive": "manual driving",
+    "head": "a head move",
+    "lift": "a lift move",
+    "speech": "speech",
+    "chat": "the conversation",
+    "freeplay": "a Freeplay change",
+    "arm": "motor enabling",
+    "surface": "a surface change",
+    "wake": "waking up",
+    "camera": "the camera preview",
+}
 
 
 class RobotController:
@@ -34,6 +53,9 @@ class RobotController:
         self._stop_epoch = 0
         self._freeplay_task: asyncio.Task[None] | None = None
         self._ambient_task: asyncio.Task[None] | None = None
+        self._ambient_live = False
+        self._ambient_director: PersonalityDirector | None = None
+        self.ambient_problem = ""
         self.code_mode = False
         self._spontaneous_task: asyncio.Task[None] | None = None
         self.freeplay_allows_motion = False
@@ -83,7 +105,11 @@ class RobotController:
             if not self._game_task.done():
                 self._game_task.cancel()
                 self._schedule_stop()
-        self._tasks[name] = asyncio.create_task(self._execute(name, operation))
+        task = asyncio.create_task(self._execute(name, operation))
+        # Also covers a task cancelled before its first step: it never runs
+        # _execute's finally, so this is the only place that resumes idle life.
+        task.add_done_callback(lambda _task: self.start_ambient(delay=AMBIENT_RESUME_DELAY))
+        self._tasks[name] = task
 
     async def _execute(self, name: str, operation: Callable[[], Awaitable[None]]) -> None:
         try:
@@ -136,38 +162,96 @@ class RobotController:
                         self.message = (
                             "Conversation ended; Freeplay needs to be restarted manually."
                         )
-            self.start_ambient()
+            self.start_ambient(delay=AMBIENT_RESUME_DELAY)
 
-    def start_ambient(self) -> None:
-        """Keep eyes and sounds alive outside Freeplay without granting wheel motion."""
-        from cozmo_desktop.services.personality import PersonalityDirector
+    def _busy_tasks(self) -> list[str]:
+        # A task cancelled before its first step never runs _execute's finally and
+        # would otherwise stay in _tasks forever, silently blocking idle life.
+        for name, task in tuple(self._tasks.items()):
+            if task.done():
+                self._tasks.pop(name, None)
+        return list(self._tasks)
 
+    def _ambient_blocker(self) -> str:
+        """Plain reason why idle life cannot run now, or an empty string."""
         state = self.backend.state
-        if (
-            self.closing
-            or self.latched
-            or not state.connected
-            or state.freeplay
-            or self.code_mode
-            or self.code_lab.active
-            or self._tasks
-            or (self._game_task is not None and not self._game_task.done())
-            or (self._ambient_task is not None and not self._ambient_task.done())
+        if self.closing:
+            return "The app is closing."
+        if not state.connected:
+            return "Connect Cozmo to start idle life."
+        if self.latched:
+            return "Paused by STOP. Select Resume controls."
+        if state.freeplay:
+            return "Freeplay is running; it includes blinking and sounds."
+        if self.code_mode or self.code_lab.active:
+            return "Paused while Code Lab is open."
+        if self._game_task is not None and not self._game_task.done():
+            return "Paused during the cube game."
+        busy = self._busy_tasks()
+        if busy:
+            return "Paused during " + ", ".join(TASK_LABELS.get(n, n) for n in busy) + "."
+        return ""
+
+    @property
+    def ambient_running(self) -> bool:
+        task = self._ambient_task
+        return self._ambient_live and task is not None and not task.done() and not task.cancelling()
+
+    def ambient_status(self) -> str:
+        """One line for people, not engineers: is Cozmo's idle life active, and why not."""
+        if self.ambient_running:
+            text = "Idle life is running: blinking, glancing around and occasional sounds."
+            director = self._ambient_director
+            if director is not None and director.output_failures and director.problem:
+                text += f" Last face/sound was refused: {director.problem}"
+            return text
+        blocker = self._ambient_blocker()
+        if blocker:
+            return "Idle life is off. " + blocker
+        if self._ambient_task is not None and not self._ambient_task.done():
+            return "Idle life resumes in a moment."
+        if self.ambient_problem:
+            return f"Idle life paused: {self.ambient_problem} Retrying shortly."
+        return "Idle life is off."
+
+    def start_ambient(self, *, delay: float = 0.0) -> None:
+        """Keep eyes and sounds alive outside Freeplay without granting wheel motion."""
+        if self._ambient_blocker() or (
+            self._ambient_task is not None and not self._ambient_task.done()
         ):
             return
-        director = PersonalityDirector(self.backend)
-        self._ambient_task = asyncio.create_task(director.run(ambient=True))
+        self._ambient_task = asyncio.create_task(self._run_ambient(delay))
         self._ambient_task.add_done_callback(self._ambient_finished)
+
+    async def _run_ambient(self, delay: float) -> None:
+        if delay:
+            await asyncio.sleep(delay)
+            if self._ambient_blocker():
+                return
+        director = PersonalityDirector(self.backend)
+        self._ambient_director = director
+        self._ambient_live = True
+        try:
+            await director.run(ambient=True)
+        finally:
+            self._ambient_live = False
+        self.ambient_problem = ""
 
     def _ambient_finished(self, task: asyncio.Task[None]) -> None:
         if task.cancelled():
             return
         error = task.exception()
         if error is not None and not self.closing:
-            logger.error("ambient_failed error_type=%s", type(error).__name__)
-            self.message = "Cozmo's idle reactions paused. Robot controls remain available."
+            detail = str(error) if isinstance(error, RobotError) else type(error).__name__
+            logger.error("ambient_failed error_type=%s detail=%s", type(error).__name__, detail)
+            self.ambient_problem = (
+                detail if isinstance(error, RobotError) else "an internal error (see log)."
+            )
+            if self.backend.state.connected and not self.latched:
+                self.start_ambient(delay=AMBIENT_RETRY_DELAY)
 
     async def stop_ambient(self) -> None:
+        self.ambient_problem = ""
         if self._ambient_task is not None:
             self._ambient_task.cancel()
             await asyncio.gather(self._ambient_task, return_exceptions=True)
@@ -178,6 +262,7 @@ class RobotController:
         if not self.backend.state.connected:
             raise RobotError("Connect Cozmo first.")
         await self.stop_ambient()
+        problem = ""
         try:
             await self.backend.display_face(render_face("Sleepy"), "Sleepy")
             await self.backend.play_sound("sleepy")
@@ -186,13 +271,18 @@ class RobotController:
                 await self.backend.display_face(render_face("Curious"), "Curious")
                 await self.backend.play_sound("happy")
         except RobotError as exc:
-            logger.warning("wake_effect_unavailable error_type=%s", type(exc).__name__)
+            logger.warning(
+                "wake_effect_unavailable error_type=%s detail=%s", type(exc).__name__, exc
+            )
+            problem = f" The wake-up face/sound was refused: {exc}"
         self.message = (
             "Cozmo is awake on the charger. Automatic undocking is not enabled."
             if self.backend.state.on_charger
             else "Cozmo is awake and looking around."
-        )
-        self.start_ambient()
+        ) + problem
+        if not self.ambient_running:
+            await self.stop_ambient()  # Waking is itself the start signal; skip any delay.
+            self.start_ambient()
 
     async def send_chat(self, text: str, model: str, *, spontaneous: bool = False) -> None:
         from cozmo_desktop.face.expressions import NAMES, render_face
@@ -431,7 +521,9 @@ class RobotController:
         self._cancel_commands()
         self._schedule_stop()
         if self._stop_task is not None:
-            self._stop_task.add_done_callback(lambda _task: self.start_ambient())
+            self._stop_task.add_done_callback(
+                lambda _task: self.start_ambient(delay=AMBIENT_RESUME_DELAY)
+            )
 
     def _schedule_stop(self) -> None:
         if self._stop_task is None or self._stop_task.done():
@@ -461,7 +553,7 @@ class RobotController:
         if epoch == self._stop_epoch and not self.closing:
             self.latched = False
             self.message = "Controls ready. Hold a direction to drive."
-            self.start_ambient()
+            self.start_ambient(delay=AMBIENT_RESUME_DELAY)
 
     async def drive(self, left: float, right: float) -> None:
         if self.latched or self.closing:

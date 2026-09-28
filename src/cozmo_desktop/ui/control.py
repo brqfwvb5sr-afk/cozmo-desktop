@@ -64,6 +64,8 @@ class ControlPage(QWidget):
         self.limit.valueChanged.connect(self._limit_changed)
         drive_layout.addWidget(self.limit_text)
         drive_layout.addWidget(self.limit)
+        self.limit_note = label("", "muted", True)
+        drive_layout.addWidget(self.limit_note)
         columns.addWidget(drive_card, 3)
         posture, self.posture_label = card("Posture", "Head 0°  ·  Lift 0%")
         self.posture_label.setStyleSheet("font-size: 20px;")
@@ -124,6 +126,13 @@ class ControlPage(QWidget):
         self.limit_text.setText(f"Speed limit  {value} mm/s")
 
     def refresh(self, state: RobotState) -> None:
+        self.limit_note.setText(
+            "Desktop cap 40 mm/s while real-robot driving is unvalidated. Cozmo's wheels "
+            "reach about 200 mm/s, so the phone app feels much faster; the cap only "
+            "rises after supervised floor tests."
+            if not self.controller.backend.is_simulation
+            else "Simulator cap 80 mm/s."
+        )
         self.speed_label.setText(f"{state.left_speed:.0f} / {state.right_speed:.0f} mm/s")
         self.posture_label.setText(f"Head {state.head_angle:.0f}°  ·  Lift {state.lift_height:.0%}")
         self.last_speech.setText(state.speech or "No speech yet.")

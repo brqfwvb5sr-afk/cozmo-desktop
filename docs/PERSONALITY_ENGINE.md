@@ -19,6 +19,19 @@ With a connected Power Cube, it occasionally lights one cube blue as an invitati
 A tap changes the cube briefly to green and Cozmo's eyes to Happy. The light is
 cleared on timeout, cancellation, disconnect or game handoff.
 
+Idle life is owned by `RobotController`. It resumes 2 s after the last manual,
+Code Lab or UI command (and immediately after waking), so it never competes with
+held drive keys or posing. Every submitted task re-triggers the resume when it ends,
+including tasks cancelled before they ran; earlier such tasks could block idle life
+until the next command. Between blinks, eyes glance sideways every 2.5–6 s (eyes only,
+no motor, also on the charger; not during cliff/pickup/fall). Being set down after a
+pickup gives one short chirp. A refused face/sound is skipped; three consecutive
+refusals pause idle life, report the reason on Home and retry after 10 s.
+Home shows whether idle life runs or why not, when a face/sound was last handed to
+the transport, whether PyCozmo's 30 fps face/audio stream runs and Cozmo's own
+played-audio counter. Only that counter comes from the robot; everything else proves
+that the desktop sent something, not that the OLED or speaker showed it.
+
 Random and clock inputs are injected in tests. These behaviors are original-code
 recreations, not the official Freeplay engine or proprietary animations/sounds.
 There is no face identification, navigation map or automatic docking.

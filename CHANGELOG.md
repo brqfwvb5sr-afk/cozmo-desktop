@@ -2,6 +2,26 @@
 
 ## Unreleased — PrimTux / local AI milestone
 
+- Fix idle life (ambient personality) silently stopping for good when a queued command
+  was cancelled before it ran (for example releasing a drive key right after a UI
+  refresh); the Home page also no longer claims "eyes and sounds" when nothing runs.
+- Resume idle life 2 s after manual, Code Lab or UI commands instead of restarting it
+  between every 100 ms drive renewal; waking Cozmo still starts it immediately.
+- A single refused face/sound frame no longer ends idle life; three in a row pause it
+  with a plain reason and an automatic retry after 10 s. It never latches STOP.
+- Direct worker: stale (pre-STOP) commands are discarded without disarming motors;
+  refused face/sound/cube-light commands no longer lock the wheels; SDK faults in
+  display/audio calls are reported instead of ending the robot session.
+- Direct worker: a sound no longer sends StopAllMotors, which cut head/lift gestures
+  short; it still stops wheels that are running.
+- Show on Home whether idle life runs (or why not), when a face and a sound were last
+  sent, whether PyCozmo's face/sound stream runs, Cozmo's own played-audio counter and
+  the last refused command. The same safe fields are in the diagnostics export and
+  refusals are logged.
+- Add eyes-only glances between blinks and a short sound when Cozmo is set back down.
+- Explain the 40 mm/s desktop speed cap on Control; the cap itself is unchanged.
+- Physical validation of these changes on a real Cozmo is pending.
+
 - Make PrimTux the primary target while retaining shared Ubuntu direct Wi-Fi code.
 - Add read-only target inventory and honest PrimTux compatibility/validation docs.
 - Add a configurable loopback-only Ollama provider, installed-model discovery,

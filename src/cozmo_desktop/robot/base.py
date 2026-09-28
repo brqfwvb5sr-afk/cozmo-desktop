@@ -71,6 +71,25 @@ class RobotState:
 
 
 @dataclass(frozen=True)
+class OutputActivity:
+    """Face/sound output as far as the backend can observe it.
+
+    Times use this process's ``time.monotonic()``. For the direct backend a count
+    means the frame reached PyCozmo's animation queue, not that the OLED showed it;
+    ``robot_audio_frames`` is the robot's own counter and the only robot-side proof.
+    """
+
+    faces: int = 0
+    sounds: int = 0
+    last_face: float | None = None
+    last_sound: float | None = None
+    rejected: str = ""
+    last_rejected: float | None = None
+    stream_running: bool | None = None
+    robot_audio_frames: int | None = None
+
+
+@dataclass(frozen=True)
 class Animation:
     name: str
     category: str
@@ -87,6 +106,11 @@ class RobotBackend(ABC):
 
     is_simulation = True
     speed_cap = 80
+    _output = OutputActivity()
+
+    @property
+    def output(self) -> OutputActivity:
+        return self._output
 
     async def arm_motors(self) -> None:
         """Explicit opt-in for physical motor commands; simulator needs no arming."""

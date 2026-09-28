@@ -3,6 +3,7 @@
 import asyncio
 import importlib.util
 import io
+import logging
 import math
 import multiprocessing
 import shutil
@@ -23,12 +24,15 @@ from cozmo_desktop.robot.base import (
     VOCALIZATIONS,
     Animation,
     NotConnectedError,
+    OutputActivity,
     RobotBackend,
     RobotError,
     RobotState,
 )
 
 from .worker import run_worker
+
+logger = logging.getLogger(__name__)
 
 
 def check_route() -> str:
@@ -154,6 +158,7 @@ class DirectBackend(RobotBackend):
         await self.disconnect()
         self._closing = False
         self._failed = False
+        self._output = OutputActivity()
         self._state_received.clear()
         context = multiprocessing.get_context("spawn")
         parent, child = context.Pipe()
@@ -263,11 +268,37 @@ class DirectBackend(RobotBackend):
                         freeplay=self._state.freeplay,
                     )
                     self._state_received.set()
+                    if isinstance(message.get("output"), dict):
+                        self._record_output(message["output"])
                 elif "camera" in message and not self._failed:
                     self._camera = message["camera"]
         except (EOFError, OSError):
             if not self._closing:
                 self._fail("Connection to the robot worker was lost.")
+
+    def _record_output(self, report: dict[str, Any]) -> None:
+        now = time.monotonic()
+
+        def moment(key: str) -> float | None:
+            value = report.get(key)
+            return now - value if type(value) is float else None
+
+        rejected = str(report.get("rejected", ""))[:120]
+        if rejected and rejected != self._output.rejected:
+            # Worker-generated reasons only; no SDK exception text crosses the pipe.
+            logger.warning("robot_command_rejected detail=%s", rejected)
+        running = report.get("stream_running")
+        frames = report.get("robot_audio_frames")
+        self._output = OutputActivity(
+            faces=int(report.get("faces", 0)),
+            sounds=int(report.get("sounds", 0)),
+            last_face=moment("face_age"),
+            last_sound=moment("sound_age"),
+            rejected=rejected,
+            last_rejected=moment("rejected_age"),
+            stream_running=running if type(running) is bool else None,
+            robot_audio_frames=frames if type(frames) is int else None,
+        )
 
     async def _keepalive(self) -> None:
         try:

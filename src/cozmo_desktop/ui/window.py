@@ -1,6 +1,7 @@
 import asyncio
 import os
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -38,6 +39,7 @@ from cozmo_desktop.face.expressions import NAMES, Expression, apply_expression, 
 from cozmo_desktop.robot.base import RobotError
 from cozmo_desktop.robot.direct.backend import DirectBackend
 from cozmo_desktop.robot.simulator import SimulatorBackend
+from cozmo_desktop.services.activity import describe_output
 from cozmo_desktop.services.cliff_trace import LABELS, MAX_SAMPLES, CliffTrace, analyze_trace
 from cozmo_desktop.services.controller import RobotController
 from cozmo_desktop.services.diagnostics import export_report
@@ -231,6 +233,14 @@ class MainWindow(QMainWindow):
             "Camera offline · Local chat optional · Autonomous driving off", "muted", True
         )
         activity_layout.addWidget(self.home_detail)
+        self.life_status = label(
+            "Idle life is off. Connect Cozmo to start idle life.", "notice", True
+        )
+        self.life_status.setAccessibleName("Idle life status")
+        activity_layout.addWidget(self.life_status)
+        self.output_status = label("Face and sound output: not connected.", "muted", True)
+        self.output_status.setAccessibleName("Face and sound output diagnostics")
+        activity_layout.addWidget(self.output_status)
         row = QHBoxLayout()
         self.freeplay = QPushButton("Start Freeplay")
         self.freeplay.clicked.connect(self.toggle_idle)
@@ -248,10 +258,11 @@ class MainWindow(QMainWindow):
         activity_layout.addWidget(self.freeplay_movement)
         activity_layout.addWidget(
             label(
-                "Eyes, blinking and sounds start when Cozmo connects. "
+                "Eyes, blinking and sounds start when Cozmo connects and return a few "
+                "seconds after manual actions. "
                 "For roaming, select this checkbox; Cozmo starts after you select a clear "
                 "floor and enable motors on Connection. "
-                "Manual speed is adjustable on Control (physical cap: 40 mm/s).",
+                "Manual speed is adjustable on Control (desktop cap: 40 mm/s).",
                 "muted",
                 True,
             )
@@ -1158,7 +1169,7 @@ class MainWindow(QMainWindow):
                     if state.freeplay
                     else (
                         "Cozmo is awake · eyes and sounds"
-                        if state.connected and self.controller._ambient_task is not None
+                        if state.connected and self.controller.ambient_running
                         else "Ready when you are"
                     )
                 )
@@ -1172,6 +1183,15 @@ class MainWindow(QMainWindow):
             f"{'Test face detected' if state.face_detected else 'Face recognition off'} · "
             f"{'Charging' if state.charging else 'Not charging'} · Local chat optional · "
             f"Autonomous movement {'on' if moving else 'off'}"
+        )
+        self.life_status.setText(self.controller.ambient_status())
+        self.output_status.setText(
+            describe_output(
+                self.controller.backend.output,
+                state,
+                time.monotonic(),
+                simulation=self.controller.backend.is_simulation,
+            )
         )
         self.control.refresh(state)
         game = self.controller.game_state
@@ -1335,7 +1355,13 @@ class MainWindow(QMainWindow):
         )
         if path:
             try:
-                export_report(Path(path), self.controller.backend.state, self.controller.latched)
+                export_report(
+                    Path(path),
+                    self.controller.backend.state,
+                    self.controller.latched,
+                    output=self.controller.backend.output,
+                    idle_life=self.controller.ambient_status(),
+                )
                 self.controller.message = "Diagnostic report exported without personal data."
             except OSError:
                 self.controller.message = "Could not export the report. Choose another folder."

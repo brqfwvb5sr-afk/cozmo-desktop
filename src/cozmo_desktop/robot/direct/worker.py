@@ -7,6 +7,7 @@ import logging
 import math
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import replace
 from multiprocessing.connection import Connection
 from queue import Full, Queue
@@ -16,6 +17,14 @@ from cozmo_desktop.robot.base import RobotError
 
 from .safety import DRIVE_TIMEOUT, GUI_TIMEOUT, SafetyGuard
 from .transport import PyCozmoTransport
+
+# Display/sound/cube-light commands never move a motor. Rejecting one must not
+# disarm the wheels or lock the user out; motion and arming errors still do.
+COSMETIC = frozenset({"face", "audio", "cube", "cube_color"})
+
+
+class StaleCommand(RobotError):
+    """Sent before a newer STOP; discarded unexecuted, so there is nothing to halt."""
 
 
 def number(value: Any, low: float, high: float) -> float:
@@ -32,6 +41,38 @@ class WorkerSession:
         self.closing = False
         self.expression = "Neutral"
         self.surface = "unknown"
+        self.faces = 0
+        self.sounds = 0
+        self.last_face: float | None = None
+        self.last_sound: float | None = None
+        self.rejected = ""
+        self.last_rejected: float | None = None
+
+    def reject(self, message: dict[str, Any], error: RobotError, now: float) -> None:
+        command = str(message.get("command"))[:20]
+        self.rejected = f"{command}: {error}"
+        self.last_rejected = now
+        if isinstance(error, StaleCommand) or command in COSMETIC:
+            return
+        self.guard.trip(str(error))
+        self.stop(lock=True)
+
+    def output(self, now: float, stream: tuple[bool, int | None] | None) -> dict[str, Any]:
+        """Plain values for the desktop; ages avoid comparing clocks across processes."""
+
+        def age(moment: float | None) -> float | None:
+            return None if moment is None else max(0.0, now - moment)
+
+        return {
+            "faces": self.faces,
+            "sounds": self.sounds,
+            "face_age": age(self.last_face),
+            "sound_age": age(self.last_sound),
+            "rejected": self.rejected,
+            "rejected_age": age(self.last_rejected),
+            "stream_running": None if stream is None else stream[0],
+            "robot_audio_frames": None if stream is None else stream[1],
+        }
 
     def stop(self, *, lock: bool = False) -> None:
         self.driver.stop()
@@ -57,7 +98,7 @@ class WorkerSession:
         if generation < self.generation:
             if command == "heartbeat":
                 return  # An in-flight heartbeat may cross STOP; never rewind the epoch.
-            raise RobotError("Cancelled command discarded.")
+            raise StaleCommand("Cancelled command discarded.")
         self.generation = generation
         if command == "stop":
             self.stop()
@@ -102,29 +143,49 @@ class WorkerSession:
             pixels = message.get("pixels")
             if not isinstance(pixels, bytes) or len(pixels) != 8192:
                 raise RobotError("Invalid face frame.")
-            self.driver.face(pixels)
+            self._output(lambda: self.driver.face(pixels), "Face frame")
             self.expression = str(message.get("name", "Custom"))[:40]
+            self.faces += 1
+            self.last_face = now
         elif command == "audio":
             data = message.get("data")
             if not isinstance(data, bytes) or len(data) > 1_400_000:
                 raise RobotError("Invalid speech audio.")
-            self.driver.stop_motors()
-            self.guard.wheel_deadline = None
-            self.driver.audio(data)
+            if self.guard.wheel_deadline is not None:
+                # Sound never plays while wheels run, but it must not cut short a head
+                # or lift gesture the way StopAllMotors did.
+                self.driver.drive(0, 0)
+                self.guard.wheel_deadline = None
+            self._output(lambda: self.driver.audio(data), "Sound")
+            self.sounds += 1
+            self.last_sound = now
         elif command == "cube":
             cube = message.get("number")
             if type(cube) is not int or cube not in (1, 2, 3):
                 raise RobotError("Unknown cube.")
-            self.driver.cube_lights(cube)
+            self._output(lambda: self.driver.cube_lights(cube), "Cube light")
         elif command == "cube_color":
             cube, color = message.get("number"), message.get("color")
             if type(cube) is not int or cube not in (1, 2, 3):
                 raise RobotError("Unknown cube.")
             if color not in ("off", "red", "green", "blue"):
                 raise RobotError("Unknown cube light color.")
-            self.driver.cube_lights(cube, color)
+            self._output(lambda: self.driver.cube_lights(cube, color), "Cube light")
         else:
             raise RobotError("Unsupported robot command.")
+
+    @staticmethod
+    def _output(action: Callable[[], None], what: str) -> None:
+        """A codec/SDK fault in a display or sound call must not kill the session."""
+        try:
+            action()
+        except RobotError:
+            raise
+        except Exception as exc:
+            logging.getLogger(__name__).error(
+                "output_failed kind=%s error_type=%s", what, type(exc).__name__
+            )
+            raise RobotError(f"{what} could not be queued ({type(exc).__name__}).") from exc
 
 
 def run_worker(pipe: Connection) -> None:
@@ -167,8 +228,7 @@ def run_worker(pipe: Connection) -> None:
                     if request_id is not None:
                         emit({"reply": request_id})
                 except RobotError as exc:
-                    session.guard.trip(str(exc))
-                    session.stop(lock=True)
+                    session.reject(message, exc, now)
                     if request_id is not None:
                         emit({"reply": request_id, "error": str(exc)})
             if not ready:
@@ -195,7 +255,13 @@ def run_worker(pipe: Connection) -> None:
                     expression=session.expression,
                     surface_mode=session.surface,
                 )
-                emit({"state": state})
+                stream = getattr(driver, "stream_status", None)
+                emit(
+                    {
+                        "state": state,
+                        "output": session.output(now, stream() if stream else None),
+                    }
+                )
                 published = now
             if now - camera_published >= 0.2:
                 frame = driver.camera_jpeg()
