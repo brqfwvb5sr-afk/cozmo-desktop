@@ -41,6 +41,9 @@ class RobotController:
         self.chat_turns: list[ChatTurn] = []
 
         self.chat_status = "Enter an installed Ollama model and type a message."
+        from cozmo_desktop.code_lab.commands import ScratchCommands
+
+        self.code_lab = ScratchCommands(self)
 
     @property
     def game_state(self) -> GameState:
@@ -59,6 +62,9 @@ class RobotController:
             return
         if name in self._tasks and not self._tasks[name].done():
             return
+        if name != "camera" and self.code_lab.active:
+            self.code_lab.cancel()
+            self._schedule_stop()
         if name not in ("camera", "chat") and self.chat_busy:
             self._resume_freeplay_after_chat = (False, False)
             self.stop_response()
@@ -227,6 +233,7 @@ class RobotController:
             gaze = -gaze
 
     def _cancel_commands(self) -> None:
+        self.code_lab.cancel()
         current = asyncio.current_task()
         for task in tuple(self._tasks.values()):
             if task is not current:

@@ -35,7 +35,8 @@ jobs:
           ruff format --check .
           mypy src
           bash -n scripts/setup-ubuntu.sh scripts/start-ubuntu.sh scripts/build-deb.sh \
-            scripts/primtux-info.sh scripts/setup-primtux.sh scripts/start-primtux.sh
+            scripts/primtux-info.sh scripts/setup-primtux.sh scripts/start-primtux.sh \
+            scripts/build-scratch.sh
       - name: Test without hardware
         run: pytest -q
       - name: Read-only Linux platform inventory

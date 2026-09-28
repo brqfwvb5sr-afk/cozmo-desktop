@@ -32,6 +32,7 @@ bash scripts/primtux-info.sh
 | USB Wi-Fi support | Unverified | Wi-Fi device in `nmcli`, route to Cozmo |
 | Package manager | Unknown | `apt-get` presence; inspect OS before package choice |
 | Ollama compatibility | Unverified | architecture, `ollama --version`, localhost `/api/tags`, model inference |
+| Scratch Code Lab / QtWebEngine | Unverified | open Code, measure editor startup/RAM, run offline `.sb3` project |
 
 The inventory avoids SSIDs, IPs, USB serial numbers and audio recordings. It prints
 network **types and states** only. The system's exact hardware, Qt plugin behavior,
@@ -49,3 +50,6 @@ see [OLLAMA.md](OLLAMA.md). Start with `bash scripts/start-primtux.sh`.
 
 PrimTux-specific `.deb` packaging is **pending inspection** of the actual base and
 target architecture. The Ubuntu 24.04 `.deb` must not be assumed compatible.
+The source tree includes a prebuilt Code Lab runtime bundle, so normal users should
+not need Node/npm. The exact PrimTux QtWebEngine and graphics behavior remains
+unverified. See [Scratch architecture](SCRATCH_ARCHITECTURE.md).

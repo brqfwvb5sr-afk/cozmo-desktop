@@ -4,6 +4,26 @@ The application is GPL-3.0-or-later. Its UI, icon, procedural faces and syntheti
 camera frames are original. No proprietary app assets are included. This is an
 unofficial community project, unaffiliated with Anki or Digital Dream Labs.
 
+## Cozmo Code Lab editor
+
+Code Lab bundles a modified production build of the [Scratch Foundation
+`scratch-editor` monorepo](https://github.com/scratchfoundation/scratch-editor)
+at commit `ec153a14c78cf95df60f333975bbde8d4f031531` (15.1.2).
+Its GUI, VM and related workspace packages declare `AGPL-3.0-only`.
+The resolved [Scratch Blocks](https://github.com/scratchfoundation/scratch-blocks)
+dependency is 2.1.19 and declares Apache-2.0. Source/build instructions and all
+local changes are in `frontend/scratch/` and `scripts/build-scratch.sh`.
+`src/cozmo_desktop/code_lab/static/` includes the upstream AGPL license, trademark
+notice and generated JavaScript license notices. A binary redistributor must also
+provide complete corresponding editor source and build information, and review
+the lockfile's remaining transitive dependencies and their notices.
+
+This project and Cozmo Code Lab are unofficial and not endorsed by the Scratch
+Foundation. The project logo is original. Scratch name, logo and character
+graphics are subject to the [upstream trademark notice](https://github.com/scratchfoundation/scratch-editor/blob/develop/TRADEMARK).
+The editor is described as based on open-source Scratch technology solely for
+attribution and compatibility. Do not use Scratch marks as product branding.
+
 ## Researched projects and selected transport
 
 | Project | License inspected | Use |

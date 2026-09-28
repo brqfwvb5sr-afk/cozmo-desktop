@@ -1,5 +1,11 @@
 # AI architecture and safety boundary
 
+Code Lab's optional AI blocks call the existing `ConversationService` through
+`ScratchCommands`. The validated structured Ollama reply contributes only speech
+text to `ask Cozmo AI` or `Cozmo AI say`; model-selected robot actions are ignored
+in these blocks. The editor does not load or contact Ollama at startup. Missing
+models and timeouts return a safe block error. See [Scratch extension](SCRATCH_EXTENSION.md).
+
 `Talk with Cozmo` → `RobotController` → `ConversationService` → `AIProvider` →
 `OllamaProvider` → loopback Ollama. Optional `VoskPushToTalk` produces text for the
 same path. The provider knows nothing about the robot backend.

@@ -24,6 +24,9 @@ cozmo-desktop = "cozmo_desktop.app.main:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+"cozmo_desktop.code_lab" = ["static/**/*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"

@@ -3,7 +3,7 @@ from datetime import datetime
 from pathlib import Path
 
 from PIL import Image
-from PySide6.QtCore import QEvent, QObject, Qt, QTimer
+from PySide6.QtCore import QEvent, QObject, Qt, QTimer, QUrl
 from PySide6.QtGui import QCloseEvent, QKeyEvent
 from PySide6.QtWidgets import (
     QAbstractSpinBox,
@@ -31,6 +31,7 @@ from cozmo_desktop import __version__
 from cozmo_desktop.ai.providers.ollama import OllamaProvider, validate_endpoint
 from cozmo_desktop.ai.resources import detect_resources, model_memory_warning
 from cozmo_desktop.ai.speech import VoskPushToTalk
+from cozmo_desktop.code_lab.server import CodeLabServer
 from cozmo_desktop.face.expressions import NAMES, Expression, apply_expression, render_face
 from cozmo_desktop.robot.base import RobotError
 from cozmo_desktop.robot.direct.backend import DirectBackend
@@ -57,6 +58,7 @@ PAGES = (
     "Cubes",
     "Games",
     "Conversation",
+    "Code",
 )
 KEYS: dict[int, str] = {Qt.Key.Key_W: "w", Qt.Key.Key_A: "a", Qt.Key.Key_S: "s", Qt.Key.Key_D: "d"}
 
@@ -77,6 +79,9 @@ class MainWindow(QMainWindow):
         self._ollama_health_label = "Checking local Ollama…"
         self._ollama_task: asyncio.Task[None] | None = None
         self._microphone_task: asyncio.Task[None] | None = None
+        self._code_start_task: asyncio.Task[None] | None = None
+        self.code_server: CodeLabServer | None = None
+        self.code_view: QWidget | None = None
         self.recognizer = VoskPushToTalk()
         self.listening = False
         self.cliff_trace = CliffTrace()
@@ -153,6 +158,7 @@ class MainWindow(QMainWindow):
             scroll.setWidgetResizable(True)
             scroll.setWidget(page)
             self.stack.addWidget(scroll)
+        self.stack.addWidget(self.code_page())
         main.addWidget(self.stack, 1)
         self.feedback = label(controller.message, "muted", True)
         self.feedback.setMinimumHeight(38)
@@ -234,6 +240,9 @@ class MainWindow(QMainWindow):
         conversation = QPushButton("Talk with Cozmo")
         conversation.clicked.connect(lambda: self.navigation.setCurrentRow(9))
         activity_layout.addWidget(conversation)
+        code = QPushButton("Open Cozmo Code Lab")
+        code.clicked.connect(lambda: self.navigation.setCurrentRow(10))
+        activity_layout.addWidget(code)
         layout.addWidget(activity)
         layout.addStretch()
         return page
@@ -877,6 +886,52 @@ class MainWindow(QMainWindow):
         self.release_controls()
         self.stack.setCurrentIndex(index)
         self.page_title.setText(PAGES[index])
+        if index == 10 and (self._code_start_task is None or self._code_start_task.done()):
+            try:
+                self._code_start_task = asyncio.create_task(self._start_code_lab())
+            except RuntimeError:
+                pass
+
+    def code_page(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.addWidget(label("Cozmo Code Lab", "title"))
+        self.code_status = label(
+            "Unofficial Code Lab, built with open-source Scratch editor technology.",
+            "muted",
+            True,
+        )
+        layout.addWidget(self.code_status)
+        self.code_live_status = label("Cozmo: Disconnected · Safety: Waiting", "muted", True)
+        layout.addWidget(self.code_live_status)
+        self.code_container = QVBoxLayout()
+        layout.addLayout(self.code_container, 1)
+        return page
+
+    async def _start_code_lab(self) -> None:
+        if self.code_server is not None:
+            return
+        static_dir = await asyncio.to_thread(
+            lambda: Path(__file__).resolve().parents[1] / "code_lab" / "static"
+        )
+        try:
+            from PySide6.QtWebEngineWidgets import QWebEngineView
+
+            server = CodeLabServer(self.controller.code_lab, static_dir)
+            await server.start()
+            view = QWebEngineView(self)
+            self.code_container.addWidget(view)
+            self.code_view = view
+            self.code_server = server
+            view.setUrl(QUrl(server.url))
+            self.code_status.setText(
+                "Local editor ready. Connect Cozmo or the simulator; STOP stays above."
+            )
+        except (ImportError, FileNotFoundError, OSError) as exc:
+            self.code_status.setText(
+                "Code Lab editor is not installed. Build Scratch and install QtWebEngine."
+            )
+            self.controller.message = str(exc)
 
     def release_controls(self) -> None:
         self.keys.clear()
@@ -986,6 +1041,18 @@ class MainWindow(QMainWindow):
             ("●  Simulator" if self.controller.backend.is_simulation else "●  Cozmo Wi-Fi")
             if state.connected
             else "○  Disconnected"
+        )
+        battery = f"{state.battery:.0f}%" if state.battery is not None else "unknown"
+        mode = (
+            "Scratch"
+            if self.controller.code_lab.active
+            else ("Freeplay" if state.freeplay else "Ready")
+        )
+        safety = "STOP" if self.controller.latched else state.safety_status or "OK"
+        self.code_live_status.setText(
+            f"Cozmo: {'Connected' if state.connected else 'Disconnected'} · "
+            f"Battery: {battery} · Mode: {mode} · Safety: {safety} · "
+            f"{self._ollama_health_label}"
         )
         self.connect_button.setText(
             "Disconnect"
@@ -1208,6 +1275,10 @@ class MainWindow(QMainWindow):
 
     async def _shutdown(self) -> None:
         self.timer.stop()
+        if self._code_start_task is not None:
+            await asyncio.gather(self._code_start_task, return_exceptions=True)
+        if self.code_server is not None:
+            await self.code_server.close()
         if self._ollama_task is not None:
             self._ollama_task.cancel()
             await asyncio.gather(self._ollama_task, return_exceptions=True)

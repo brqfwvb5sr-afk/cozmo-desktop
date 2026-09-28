@@ -6,6 +6,9 @@ Python and Qt. It brings controls, expressions, camera, personality, cube games 
 local Ollama conversation together behind a hardware-independent interface.
 
 **Primary platform: PrimTux. Secondary platform: Ubuntu. AI: local/offline Ollama.**
+**Play · Talk · Code:** Cozmo Code Lab embeds the real open-source Scratch 3 editor
+with 35 custom Cozmo blocks. It is an unofficial product, not affiliated with the
+Scratch Foundation. See the [Scratch integration and licenses](docs/SCRATCH_INTEGRATION_PLAN.md).
 The owner's exact PrimTux version and hardware are not yet inspected. See the
 [PrimTux inventory](docs/PRIMTUX.md) and [compatibility matrix](docs/PLATFORM_COMPATIBILITY.md).
 
@@ -24,7 +27,14 @@ application; its captures are attached to each successful Actions run.*
 ## Features
 
 - Native dark desktop workspace with Home, Control, Expressions, Animations,
-  Camera, Connection, Cubes, Games, Conversation and Settings.
+  Camera, Connection, Cubes, Games, Conversation, Code and Settings.
+- Cozmo Code Lab: real Scratch GUI/VM, standard blocks and `.sb3` open/save,
+  custom Cozmo movement, face, speech, cube, event, sensor and optional AI blocks.
+  The editor bundle and robot bridge run on loopback with no normal-use Internet
+  dependency. Cozmo commands use the existing safety controller; the native STOP
+  remains visible. Scratch hardware behavior has **not** been physically validated.
+  Seven original [lesson projects](examples/scratch) open with Scratch's normal
+  **File → Load from your computer** action.
 - Connect/disconnect a simulated Cozmo; inspect battery, pose, wheels, head, lift,
   synthetic face/cube state and camera readiness.
 - Hold graphical controls or WASD to drive. Head arrows and R/F lift controls.

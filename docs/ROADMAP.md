@@ -1,5 +1,16 @@
 # Roadmap and scope
 
+## Cozmo Code Lab milestone
+
+The pinned real Scratch editor, 35 Cozmo blocks, local bridge, simulator commands,
+STOP/Freeplay arbitration and German/French block labels are implemented and
+browser/simulator tested. Remaining release gates: `.sb3` round-trip and example
+projects, PrimTux/Ubuntu QtWebEngine package validation, performance measurement,
+additional child-friendly blocks and physical robot validation. See
+[Scratch architecture](SCRATCH_ARCHITECTURE.md) and
+[physical validation](SCRATCH_PHYSICAL_VALIDATION.md). Do not present this milestone
+as physically validated until those gates pass.
+
 PrimTux is now the primary target and Ubuntu remains supported. The first
 PrimTux/Ollama implementation adds local provider discovery, bounded conversation,
 allowlisted reactions, optional Vosk push-to-talk, opt-in cube-event speech and

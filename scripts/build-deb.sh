@@ -2,6 +2,10 @@
 # Build on Ubuntu 24.04 amd64. No privileged build operations or maintainer scripts.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+if [[ ! -f src/cozmo_desktop/code_lab/static/index.html || ! -f src/cozmo_desktop/code_lab/static/gui.js ]]; then
+    echo "Cozmo Code Lab bundle is missing; build it with scripts/build-scratch.sh first." >&2
+    exit 1
+fi
 if [[ "$(dpkg --print-architecture)" != amd64 ]]; then
     echo "This initial package recipe targets amd64 only." >&2
     exit 1
@@ -18,6 +22,8 @@ stage="$(mktemp -d "$PWD/build/deb.XXXXXX")"
 "$stage/opt/cozmo-desktop/venv/bin/python" -m pip list --format=json > dist/runtime-dependencies.json
 mkdir -p "$stage/DEBIAN" "$stage/usr/bin" "$stage/usr/share/applications"
 mkdir -p "$stage/usr/share/icons/hicolor/scalable/apps" "$stage/usr/share/doc/cozmo-desktop"
+mkdir -p "$stage/usr/share/cozmo-desktop/examples"
+cp examples/scratch/*.sb3 "$stage/usr/share/cozmo-desktop/examples/"
 cat > "$stage/DEBIAN/control" <<'EOF'
 Package: cozmo-desktop
 Version: 0.3.0
@@ -41,6 +47,8 @@ cp scripts/cozmo-desktop.desktop "$stage/usr/share/applications/"
 cp scripts/cozmo-desktop.svg "$stage/usr/share/icons/hicolor/scalable/apps/"
 cp LICENSE "$stage/usr/share/doc/cozmo-desktop/copyright"
 cp docs/THIRD_PARTY.md docs/PACKAGING.md "$stage/usr/share/doc/cozmo-desktop/"
+cp docs/SCRATCH_INTEGRATION_PLAN.md docs/SCRATCH_ARCHITECTURE.md \
+   docs/SCRATCH_EXTENSION.md "$stage/usr/share/doc/cozmo-desktop/"
 cp -r docs/licenses "$stage/usr/share/doc/cozmo-desktop/"
 cp dist/runtime-dependencies.json "$stage/usr/share/doc/cozmo-desktop/"
 dpkg-deb --root-owner-group -Zgzip --build "$stage" dist/cozmo-desktop_0.3.0_amd64.deb

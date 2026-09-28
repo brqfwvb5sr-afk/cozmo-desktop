@@ -1,4 +1,5 @@
-include LICENSE AGENTS.md CHANGELOG.md CONTRIBUTING.md
-recursive-include docs *.md *.png *.txt
-recursive-include scripts *.sh *.desktop *.svg
-recursive-include tests *.py
+recursive-include src/cozmo_desktop/code_lab/static *
+recursive-include frontend/scratch *.py *.js *.json *.svg
+recursive-include examples/scratch *.sb3
+include scripts/build-scratch.sh
+recursive-include docs *.md

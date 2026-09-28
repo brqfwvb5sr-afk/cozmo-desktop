@@ -1,5 +1,17 @@
 # PrimTux and Ubuntu packaging
 
+The Python wheel and `.deb` must contain `cozmo_desktop/code_lab/static`, the
+production Scratch editor assets, its AGPL license and trademark notice. Build the
+frontend on a development/release host with Node 24 using
+`bash scripts/build-scratch.sh`; end users do not run npm. The script pins the exact
+upstream commit and applies the tracked Cozmo overlay. A package build fails if
+the bundle is missing. Preserve `frontend/scratch/upstream.json`, overlay source,
+the upstream source URL and `gui.js.LICENSE.txt` alongside released binaries.
+The runtime bundle is about 100 MB uncompressed on this Windows build; PrimTux
+startup/RAM measurements are pending.
+Seven original `.sb3` lessons ship in `/usr/share/cozmo-desktop/examples/` in
+the Ubuntu package and are also available in the source tree.
+
 PrimTux is the primary target, but the owner's variant, base libraries and CPU
 architecture are not yet inspected. Do not install the Ubuntu 24.04 `.deb` on PrimTux
 as if it were validated. Run the inventory in [PRIMTUX.md](PRIMTUX.md), then build
