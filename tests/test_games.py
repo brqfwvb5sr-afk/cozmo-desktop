@@ -64,6 +64,12 @@ class PredictableRandom:
     def randrange(self, count):
         return 1
 
+    def uniform(self, low, high):
+        return low
+
+    def random(self):
+        return 0.5
+
 
 def director_for(robot, clock):
     return GameDirector(robot, rng=PredictableRandom(), clock=clock.time, pause=clock.pause)
@@ -105,6 +111,36 @@ async def test_quick_tap_red_is_never_a_valid_target():
     assert game.state.round == 5
     assert robot.faces == ["Happy"] * 5
     assert all(color == "off" for _, color in robot.lights[-3:])
+
+
+async def test_quick_tap_cozmo_can_win_a_valid_round_without_player_tap():
+    robot, clock = ScriptedRobot(), VirtualClock()
+    game = director_for(robot, clock)
+    game.rng.choice = lambda choices: "green" if choices == COLORS else choices[0]
+    await game.run("Quick Tap")
+    assert game.state.phase == "finished"
+    assert (game.state.player_score, game.state.cozmo_score) == (0, 5)
+    assert game.state.round == 5
+    assert robot.faces == ["Happy"] * 5
+
+
+async def test_quick_tap_cozmo_wrong_red_response_awards_player():
+    robot, clock = ScriptedRobot(), VirtualClock()
+    game = director_for(robot, clock)
+    game.rng.random = lambda: 0.0
+    await game.run("Quick Tap")
+    assert (game.state.player_score, game.state.cozmo_score) == (5, 0)
+    assert game.state.round == 5
+    assert robot.faces == ["Sad"] * 5
+
+
+async def test_quick_tap_correct_abstentions_cannot_create_a_false_winner():
+    robot, clock = ScriptedRobot(), VirtualClock()
+    game = director_for(robot, clock)
+    await game.run("Quick Tap")
+    assert (game.state.player_score, game.state.cozmo_score) == (0, 0)
+    assert game.state.round == 40
+    assert game.state.instruction == "Round limit reached without a winner."
 
 
 async def test_memory_match_increasing_sequence_and_wrong_or_missing_input():
@@ -182,4 +218,19 @@ async def test_preconditions_hazard_and_cancel_clear_lights():
     with pytest.raises(asyncio.CancelledError):
         await game.run("Keepaway")
     assert game.state.phase == "cancelled"
+    assert robot.lights[-1] == (1, "off")
+
+
+async def test_game_failure_marks_state_and_clears_cube_lights():
+    robot, clock = ScriptedRobot(connected=1), VirtualClock()
+    game = director_for(robot, clock)
+
+    def detect_hazard():
+        if game.state.phase == "watch":
+            robot.state = replace(robot.state, cliff_detected=True)
+
+    clock.hook = detect_hazard
+    with pytest.raises(RobotError, match="unsafe"):
+        await game.run("Keepaway")
+    assert game.state.phase == "failed"
     assert robot.lights[-1] == (1, "off")

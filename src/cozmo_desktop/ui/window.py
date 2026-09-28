@@ -876,7 +876,7 @@ class MainWindow(QMainWindow):
         self.game_score.setText(f"You {game.player_score} · Cozmo {game.cozmo_score}")
         self.game_status.setText(f"{game.name} · Round {game.round} · {game.instruction}")
         self.game_start.setEnabled(state.connected and not self.controller.latched)
-        self.game_stop.setEnabled(game.phase not in ("idle", "finished", "cancelled"))
+        self.game_stop.setEnabled(game.phase not in ("idle", "finished", "cancelled", "failed"))
         if self.chat_transcript.count() != len(self.controller.chat_turns):
             self.chat_transcript.clear()
             for chat_turn in self.controller.chat_turns:

@@ -82,8 +82,9 @@ Eine passende Route allein beweist keine Roboterverbindung.
 - **Games**: Quick Tap und Memory Match mit Würfel 1–3, Keepaway mit Würfel 1.
   Eigenständig programmierte Spielregeln nutzen LEDs und Tap-/Bewegungsereignisse.
   Bei Quick Tap zeigt Würfel 3 den Countdown: Würfel 1 nur bei gleichen Farben
-  antippen, niemals bei Rot. Cozmo reagiert über Augen und Laute, tippt aber
-  ohne verifizierte Würfelposition noch keinen Würfel körperlich an.
+  antippen, niemals bei Rot. Cozmo hat einen zeitgesteuerten virtuellen Gegenzug
+  mit möglichen Fehlern und reagiert über Augen und Laute. Ohne verifizierte
+  Würfelposition tippt er noch keinen Würfel körperlich an.
   Die proprietäre Original-App und ihre Spiel-Engine sind nicht enthalten. Keepaway
   verfolgt den Würfel nicht räumlich; die direkte Verbindung liefert dafür derzeit
   keine verlässlich geprüfte Würfelposition. Während Spielen bleiben die Räder still.

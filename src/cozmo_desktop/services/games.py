@@ -78,7 +78,7 @@ class GameDirector:
 
     async def _quick_tap(self) -> None:
         self._check(3)
-        for round_number in range(1, 21):
+        for round_number in range(1, 41):
             self._check(3)
             self.state = replace(
                 self.state,
@@ -107,16 +107,23 @@ class GameDirector:
                 phase="watch",
                 instruction=(
                     "Tap Cube 1 if both colors match, but never tap red. "
-                    "Cozmo reacts after 1.5 seconds."
+                    "Beat Cozmo's timed response."
                 ),
             )
-            tapped = await self._wait_for(1, first_tap, 1.5, tap=True)
             valid_target = match and player_color != "red"
-            if tapped == valid_target:
-                if tapped:
-                    await self._award(player=True)
-            elif valid_target or tapped:
-                await self._award(player=False)
+            start = self.clock()
+            deadline = start + 1.5
+            cozmo_at = start + self.rng.uniform(0.65, 1.25)
+            cozmo_taps = self.rng.random() < (0.85 if valid_target else 0.15)
+            while self.clock() < deadline:
+                state = self._check(3)
+                if state.cubes[0].tap_sequence > first_tap:
+                    await self._award(player=valid_target)
+                    break
+                if cozmo_taps and self.clock() >= cozmo_at:
+                    await self._award(player=not valid_target)
+                    break
+                await self.pause(0.05)
             await self.backend.set_cube_color(1, "off")
             await self.backend.set_cube_color(2, "off")
             await self.pause(0.3)
@@ -203,9 +210,19 @@ class GameDirector:
                 await self._memory_match()
             else:
                 await self._keepaway()
-            self.state = replace(self.state, phase="finished", instruction="Game complete.")
+            instruction = (
+                "Round limit reached without a winner."
+                if name == "Quick Tap" and max(self.state.player_score, self.state.cozmo_score) < 5
+                else "Game complete."
+            )
+            self.state = replace(self.state, phase="finished", instruction=instruction)
         except asyncio.CancelledError:
             self.state = replace(self.state, phase="cancelled", instruction="Game stopped.")
+            raise
+        except Exception:
+            self.state = replace(
+                self.state, phase="failed", instruction="Game stopped after a robot or cube error."
+            )
             raise
         finally:
             if self.backend.state.connected:
